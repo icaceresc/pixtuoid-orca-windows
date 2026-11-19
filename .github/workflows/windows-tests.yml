@@ -1,0 +1,16 @@
+name: Windows adapter tests
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  unit:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Test Orca session projection (offline)
+        run: python -m unittest -v test_oficina
