@@ -1,4 +1,9 @@
-🇬🇧 [English](README.md) · 🇵🇾 **Español** · 🇩🇪 [Deutsch](README.de.md) · 🇯🇵 [日本語](README.ja.md)
+<p align="center">
+  <a href="README.md"><img src="docs/flags/gb.svg" width="20" height="15" alt=""> English</a> &nbsp;·&nbsp;
+  <a href="README.es.md"><img src="docs/flags/py.svg" width="20" height="15" alt=""> <b>Español</b></a> &nbsp;·&nbsp;
+  <a href="README.de.md"><img src="docs/flags/de.svg" width="20" height="15" alt=""> Deutsch</a> &nbsp;·&nbsp;
+  <a href="README.ja.md"><img src="docs/flags/jp.svg" width="20" height="15" alt=""> 日本語</a>
+</p>
 
 # Pixtuoid para Orca en Windows
 
@@ -71,6 +76,7 @@ Cierra la oficina con `Q` y elimina la carpeta del clon. No se instala nada fuer
 
 ## Créditos y licencia
 
+- Este adaptador: [licencia MIT](LICENSE).
 - [Pixtuoid](https://github.com/pixtuoid/pixtuoid), de Ivan Wang, con licencia MIT. Se descarga al instalar; no se redistribuye.
-- Adaptador independiente, no es un proyecto oficial de Pixtuoid ni de Orca.
-- Este repositorio todavía no incluye una licencia.
+- Iconos de banderas: [lipis/flag-icons](https://github.com/lipis/flag-icons), [licencia MIT](docs/flags/LICENSE).
+- Orca es un producto aparte y no se incluye. Este es un adaptador independiente, no un proyecto oficial de Pixtuoid ni de Orca.
