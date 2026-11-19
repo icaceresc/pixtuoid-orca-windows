@@ -1,4 +1,9 @@
-🇬🇧 [English](README.md) · 🇵🇾 [Español](README.es.md) · 🇩🇪 [Deutsch](README.de.md) · 🇯🇵 **日本語**
+<p align="center">
+  <a href="README.md"><img src="docs/flags/gb.svg" width="20" height="15" alt=""></a>&nbsp;<a href="README.md">English</a> &nbsp;·&nbsp;
+  <a href="README.es.md"><img src="docs/flags/py.svg" width="20" height="15" alt=""></a>&nbsp;<a href="README.es.md">Español</a> &nbsp;·&nbsp;
+  <a href="README.de.md"><img src="docs/flags/de.svg" width="20" height="15" alt=""></a>&nbsp;<a href="README.de.md">Deutsch</a> &nbsp;·&nbsp;
+  <a href="README.ja.md"><img src="docs/flags/jp.svg" width="20" height="15" alt=""></a>&nbsp;<a href="README.ja.md"><b>日本語</b></a>
+</p>
 
 # Pixtuoid for Orca（Windows 版）
 
@@ -71,6 +76,7 @@ py -3 -m unittest -v test_oficina
 
 ## クレジットとライセンス
 
+- 本アダプター: [MIT ライセンス](LICENSE)。
 - [Pixtuoid](https://github.com/pixtuoid/pixtuoid)（作者: Ivan Wang、MIT ライセンス）。インストール時にダウンロードし、再配布はしていません。
-- 本プロジェクトは独立したアダプターであり、Pixtuoid や Orca の公式プロジェクトではありません。
-- このリポジトリにはまだライセンスが含まれていません。
+- 国旗アイコン: [lipis/flag-icons](https://github.com/lipis/flag-icons) v7.2.3（[MIT ライセンス](docs/flags/LICENSE)）。
+- Orca は別製品であり、本リポジトリには含まれません。本プロジェクトは独立したアダプターであり、Pixtuoid や Orca の公式プロジェクトではありません。

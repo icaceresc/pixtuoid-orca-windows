@@ -1,4 +1,9 @@
-🇬🇧 **English** · 🇵🇾 [Español](README.es.md) · 🇩🇪 [Deutsch](README.de.md) · 🇯🇵 [日本語](README.ja.md)
+<p align="center">
+  <a href="README.md"><img src="docs/flags/gb.svg" width="20" height="15" alt=""></a>&nbsp;<a href="README.md"><b>English</b></a> &nbsp;·&nbsp;
+  <a href="README.es.md"><img src="docs/flags/py.svg" width="20" height="15" alt=""></a>&nbsp;<a href="README.es.md">Español</a> &nbsp;·&nbsp;
+  <a href="README.de.md"><img src="docs/flags/de.svg" width="20" height="15" alt=""></a>&nbsp;<a href="README.de.md">Deutsch</a> &nbsp;·&nbsp;
+  <a href="README.ja.md"><img src="docs/flags/jp.svg" width="20" height="15" alt=""></a>&nbsp;<a href="README.ja.md">日本語</a>
+</p>
 
 # Pixtuoid for Orca on Windows
 
@@ -71,6 +76,7 @@ Close the office with `Q` and delete the clone folder. Nothing is installed outs
 
 ## Credits and license
 
+- This adapter: [MIT License](LICENSE).
 - [Pixtuoid](https://github.com/pixtuoid/pixtuoid) by Ivan Wang, MIT License. Downloaded at install time, not redistributed.
-- Independent adapter, not an official Pixtuoid or Orca project.
-- This repository does not include a license yet.
+- Flag icons: [lipis/flag-icons](https://github.com/lipis/flag-icons) v7.2.3, [MIT License](docs/flags/LICENSE).
+- Orca is a separate product and is not included. This is an independent adapter, not an official Pixtuoid or Orca project.
