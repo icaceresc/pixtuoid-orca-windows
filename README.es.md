@@ -87,6 +87,7 @@ La ventana flota fuera de Orca, así que puedes dejarla en un segundo monitor. S
 
 - Pixtuoid v0.23.0 solo enlaza un hijo con un padre del mismo proveedor. Un worker de otro proveedor se dibuja bajo su padre, con la gorra y la etiqueta de proveedor del padre.
 - Pixtuoid no puede dibujar hijos bajo una sesión de Antigravity de nivel superior: sus workers aparecen como compañeros separados con el mismo color de equipo. Un worker de Antigravity que ya es hijo sí puede tener hijos.
+- Un worker cuyo padre se cierra antes se va con él y vuelve como compañero separado.
 - Solo aparecen los subagentes que Orca observa. La jerarquía viene de `orca worktree ps`, la única interfaz de Orca que la expone.
 - No se muestran los agentes que ya habían terminado al abrir la oficina.
 - Los estados reflejan el turno que conoce Orca, no herramientas, tokens ni razonamiento.

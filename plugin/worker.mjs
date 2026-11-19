@@ -3,7 +3,7 @@
 // draws the office in Pixtuoid's floating window, a separate process that outlives this
 // worker. Nothing here calls the Orca host API, so the plugin asks for no capabilities.
 import { spawn } from 'node:child_process'
-import { existsSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -48,17 +48,23 @@ async function open() {
   return 'Opening the Pixtuoid office window. Only one runs at a time.'
 }
 
+// Waits until the office has exited, so nothing it holds is replaced or deleted under it.
+function stop() {
+  return python('oficina.py', ['--stop'], { timeoutMs: 75_000 })
+}
+
 async function close() {
-  const { code, out } = await python('oficina.py', ['--stop'], { timeoutMs: 20_000 })
-  if (code !== 0) return `Could not reach the office: ${lastLines(out)}`
+  const { code, out } = await stop()
+  if (code !== 0) return `The office did not close yet: ${lastLines(out)}`
   return out.endsWith('not-running')
     ? 'The Pixtuoid office is not open.'
-    : 'Closing the Pixtuoid office; it saves its size and position.'
+    : 'Closed the Pixtuoid office; it saved its size and position.'
 }
 
 async function install() {
   if (process.platform !== 'win32') return 'Pixtuoid Office runs on Windows only.'
-  await python('oficina.py', ['--stop'], { timeoutMs: 20_000 })
+  const stopped = await stop()
+  if (stopped.code !== 0) return `Close the office first: ${lastLines(stopped.out)}`
   const { code, out } = await python('instalar.py', [], { timeoutMs: 300_000 })
   return code === 0 ? lastLines(out) : `Install failed: ${lastLines(out)}`
 }
@@ -69,10 +75,14 @@ async function removeData() {
   if (!existsSync(MARKER) || !readFileSync(MARKER, 'utf8').startsWith('Pixtuoid for Orca data folder')) {
     return `Left ${HOME} untouched: it was not created by this plugin.`
   }
-  await python('oficina.py', ['--stop'], { timeoutMs: 20_000 })
-  await new Promise((wait) => setTimeout(wait, 3000))
+  const stopped = await stop()
+  if (stopped.code !== 0) return `Close the office first: ${lastLines(stopped.out)}`
   try {
-    rmSync(HOME, { recursive: true, force: false, maxRetries: 3, retryDelay: 1000 })
+    // The marker goes last, so a failed attempt can be retried.
+    for (const name of readdirSync(HOME)) {
+      if (join(HOME, name) !== MARKER) rmSync(join(HOME, name), { recursive: true, maxRetries: 3, retryDelay: 1000 })
+    }
+    rmSync(HOME, { recursive: true, maxRetries: 3, retryDelay: 1000 })
   } catch (error) {
     return `Could not remove ${HOME}: ${error.message}. Close the office and try again.`
   }

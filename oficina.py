@@ -89,12 +89,18 @@ class Agent:
     same source; `provider` keeps the agent's real provider for the log.
     """
 
-    def __init__(self, key, provider, cwd, trace, parent=None, label=None):
+    def __init__(self, key, provider, cwd, trace, parent=None, label=None, owner=None, generation=0):
         self.key = key
         self.provider = provider
         self.parent = parent
+        # The Orca agent this one belongs to, even when Pixtuoid cannot draw the link.
+        self.owner = owner or parent
         self.source = parent.source if parent else provider
         self.id = stable_id(key.removeprefix("child:"))
+        if generation:
+            # Back after leaving (its dispatcher closed first): a new coworker, so
+            # Pixtuoid never sees a start for an id it is still ending.
+            self.id = str(uuid.uuid5(uuid.UUID(self.id), str(generation)))
         self.cwd = str(cwd)
         self.label = label
         self.state = None
@@ -253,6 +259,7 @@ class Office:
         self.orca, self.env, self.trace = orca, env, trace
         self.record, self.configured = record, configured
         self.agents = {}
+        self.generations = {}
         self.paths = {}
 
     def cwd_for(self, row, ps_paths):
@@ -338,7 +345,7 @@ class Office:
             found = children.get(sid)
             if found is None:
                 # Orca cannot vouch for this row's subagents now: keep them as they were.
-                seen.update(key for key, kid in self.agents.items() if kid.parent is agent
+                seen.update(key for key, kid in self.agents.items() if kid.owner is agent
                             and key.startswith("child:"))
                 continue
             for key, (child_state, label) in found.items():
@@ -370,12 +377,12 @@ class Office:
             yield agent
             agent = agent.parent
 
-    def admit(self, key, provider, cwd, parent, label=None):
-        parent = self.linked(parent)
+    def admit(self, key, provider, cwd, owner, label=None):
+        parent = self.linked(owner)
         source = parent.source if parent else provider
         if source not in self.configured:
             return None
-        agent = Agent(key, provider, cwd, self.trace, parent, label)
+        agent = Agent(key, provider, cwd, self.trace, parent, label, owner, self.generations.get(key, 0))
         self.agents[key] = agent
         return agent
 
@@ -388,15 +395,17 @@ class Office:
         if agent.key not in self.agents:
             return
         # Pixtuoid ends a subtree with its root; mirror it so nothing lingers.
-        for kid in [kid for kid in self.agents.values() if kid.parent is agent]:
+        for kid in [kid for kid in self.agents.values() if kid.parent is agent
+                    or (kid.owner is agent and kid.key.startswith("child:"))]:
             self.close(kid)
         agent.transition(self.env, "closed")
         self.record("orca", agent, "closed")
         del self.agents[agent.key]
+        self.generations[agent.key] = self.generations.get(agent.key, 0) + 1
 
 def kernel32():
     kernel = ctypes.WinDLL("kernel32", use_last_error=True)
-    for name in ("CreateMutexW", "CreateEventW", "OpenEventW"):
+    for name in ("CreateMutexW", "OpenMutexW", "CreateEventW", "OpenEventW"):
         getattr(kernel, name).restype = ctypes.c_void_p
     kernel.CloseHandle.argtypes = [ctypes.c_void_p]
     kernel.SetEvent.argtypes = [ctypes.c_void_p]
@@ -409,16 +418,29 @@ def names():
     tag = uuid.uuid5(uuid.NAMESPACE_URL, os.path.normcase(str(HOME))).hex
     return f"Local\\Pixtuoid-Orca-{tag}", f"Local\\Pixtuoid-Orca-Stop-{tag}"
 
-def request_stop():
-    """Ask the running office of this data folder to close. True if one was running."""
+def request_stop(wait_seconds=60):
+    """Ask the running office of this data folder to close and wait until it has exited.
+
+    Returns False when none was running. Raises TimeoutError if it is still running
+    after `wait_seconds`, so callers never touch its files while it holds them.
+    """
     kernel = kernel32()
-    event = kernel.OpenEventW(0x0002, False, names()[1])  # EVENT_MODIFY_STATE
+    mutex_name, stop_name = names()
+    event = kernel.OpenEventW(0x0002, False, stop_name)  # EVENT_MODIFY_STATE
     if not event:
         return False
     try:
-        return bool(kernel.SetEvent(event))
+        kernel.SetEvent(event)
     finally:
         kernel.CloseHandle(event)
+    deadline = time.monotonic() + wait_seconds
+    while time.monotonic() < deadline:
+        mutex = kernel.OpenMutexW(0x00100000, False, mutex_name)  # SYNCHRONIZE
+        if not mutex:
+            return True
+        kernel.CloseHandle(mutex)
+        time.sleep(0.25)
+    raise TimeoutError("The office is still closing")
 
 def close_window(office):
     """Close our own floating window as its title bar would, so Pixtuoid saves its geometry."""
@@ -442,7 +464,11 @@ def close_window(office):
 
 def main():
     if "--stop" in sys.argv[1:]:
-        print("stopping" if request_stop() else "not-running")
+        try:
+            print("stopped" if request_stop() else "not-running")
+        except TimeoutError:
+            print("still-closing")
+            raise SystemExit(1)
         return
     configured = set(json.loads((PROFILE / "fuentes.json").read_text(encoding="utf-8")))
     orca = shutil.which("orca.exe")

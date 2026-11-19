@@ -54,11 +54,17 @@ def install_release():
             release.extractall(output)
         if not all((output / name).is_file() for name in ("pixtuoid.exe", "pixtuoid-hook.exe", "LICENSE")):
             raise RuntimeError("La descarga no contiene los binarios y la licencia esperados.")
+        previous = staging / "previous"
         if APP.parent.exists():
-            # Update: the verified release replaces an older Pixtuoid only after
-            # the download passed every check; the old one waits in staging.
-            APP.parent.rename(staging / "previous")
-        output.rename(APP.parent)
+            # Update: the verified release replaces an older Pixtuoid only after the
+            # download passed every check. The office must be closed (files in use).
+            APP.parent.rename(previous)
+        try:
+            output.rename(APP.parent)
+        except OSError:
+            if previous.exists():
+                previous.rename(APP.parent)
+            raise
 
 
 def shortcut():
@@ -105,6 +111,8 @@ def main():
         command = required_cli[source]
         if shutil.which(command) is None:
             parser.error(f"{source} necesita {command} en PATH para preparar su perfil aislado.")
+    if HOME != LAB and not MARKER.exists() and HOME.exists() and any(HOME.iterdir()):
+        parser.error(f"{HOME} ya existe y no la creo este instalador. Elige otra carpeta.")
     HOME.mkdir(parents=True, exist_ok=True)
     if HOME != LAB and not MARKER.exists():
         MARKER.write_text("Pixtuoid for Orca data folder. Safe to delete while the office is closed.\n",

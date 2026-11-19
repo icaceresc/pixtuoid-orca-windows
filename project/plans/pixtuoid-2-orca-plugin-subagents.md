@@ -21,13 +21,13 @@ delegation: Workers for API research and independent review are authorized when 
 
 ## Steps
 - [x] Research Orca and Pixtuoid subagent interfaces: findings above, verified against v1.4.263 / v0.23.0 sources and live `worktree ps` output
-- [x] Hierarchical projection in oficina.py (Agent/Office), stop event, data folder split: 27 unit tests pass
+- [x] Hierarchical projection in oficina.py (Agent/Office), stop event, data folder split: 29 unit tests pass
 - [x] Plugin manifest and worker (plugin/worker.mjs): `orca plugin validate .` ok, 0 capabilities, dev load approved
 - [x] Live validation through the plugin worker commands (install 21 s, open, close, reopen): Claude parent with two simultaneous subagents; short one left first (6 -> 5 characters); cancelled subagent left ~4 s after stop; Codex -> Claude, OpenCode -> Codex and Antigravity -> OpenCode two-level workers (three levels under the Claude root); office matched Orca's 5 live sessions with no ghosts; reopened at saved 960x640 @ 300,200
 - [x] Real screenshots of parents and children (local, not committed: they show private folder names)
 - [x] READMEs (EN/ES/DE/JA) and CI (Python tests + `node --check` of the worker)
-- [ ] Independent review of the diff
-- [ ] Push branch, open PR, CI green
+- [x] Independent review of the diff: 2 medium + 5 low findings; fixed M1 (remove-data retry), M2 (re-entry id), L1 (Antigravity-owned subagents), L2/L3 (stop waits for exit, install rollback), L4 (marker only in new/empty folder); L5 (repeated start after a failed hook) accepted; remove-data verified in scratch with and without marker
+- [x] Push branch, open PR, CI green: https://github.com/icaceresc/pixtuoid-orca-windows/pull/4
 - [ ] Palette commands run by the Human inside Orca (no CLI runs palette commands; GUI driving was stopped to avoid typing into the Human's draft)
 
 Open, outside this mission's DONE: merge to main, then tag `v2.0.0` and add the `orca-plugin` topic

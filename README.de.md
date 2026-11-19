@@ -87,6 +87,7 @@ Das Fenster schwebt außerhalb von Orca und passt so gut auf einen zweiten Monit
 
 - Pixtuoid v0.23.0 verknüpft ein Kind nur mit einem Elternagenten desselben Anbieters. Ein Worker eines anderen Anbieters erscheint unter seinem Elternagenten, mit Mütze und dem Anbieter-Label des Elternagenten.
 - Unter einer Antigravity-Sitzung der obersten Ebene kann Pixtuoid keine Kinder zeichnen: Ihre Worker erscheinen als eigene Kollegen in derselben Teamfarbe. Ein Antigravity-Worker, der selbst ein Kind ist, kann Kinder haben.
+- Ein Worker, dessen Elternagent zuerst endet, geht mit ihm und kehrt als eigener Kollege zurück.
 - Es erscheinen nur Subagenten, die Orca selbst beobachtet. Die Hierarchie stammt aus `orca worktree ps`, der einzigen Orca-Schnittstelle, die sie liefert.
 - Agenten, die beim Öffnen des Büros schon fertig sind, werden nicht gezeigt.
 - Die Zustände spiegeln Orcas Turn-Status, nicht Tools, Tokens oder Reasoning.

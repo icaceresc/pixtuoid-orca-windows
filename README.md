@@ -87,6 +87,7 @@ The window floats outside Orca, so you can keep it on a second monitor. Only one
 
 - Pixtuoid v0.23.0 links a child only to a parent of the same provider. A worker of another provider is drawn under its parent, with the cap and the parent's provider label.
 - Pixtuoid cannot draw children under a top-level Antigravity session: its workers appear as separate coworkers in the same team color. An Antigravity worker that is itself a child can have children.
+- A worker whose dispatcher closes first leaves with it, then returns as a separate coworker.
 - Only subagents that Orca itself observes appear. The hierarchy comes from `orca worktree ps`, the only Orca interface that exposes it.
 - Agents already finished when the office opens are not shown.
 - States mirror Orca's turn state, not tools, tokens or reasoning.

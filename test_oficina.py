@@ -248,6 +248,29 @@ class HierarchyTests(unittest.TestCase):
         self.assertIs(h.office.agents[KID].parent, agents[SID], "A missing link never demotes a child")
         self.assertEqual(h.events(), [])
 
+    def test_worker_outliving_its_dispatcher_returns_as_a_new_coworker(self):
+        h = Harness()
+        h.sync([agent("working", SID, "codex"), agent("working", KID, "codex")],
+               [ps_row(SID, children=[]), ps_row(KID, parent=SID, children=[])])
+        old = h.office.agents[KID].id
+        h.sync([agent("working", KID, "codex")], [ps_row(KID, children=[])])
+        self.assertEqual(set(h.office.agents), set())
+        h.sync([agent("working", KID, "codex")], [ps_row(KID, children=[])])
+        self.assertEqual(set(h.office.agents), {KID})
+        self.assertNotEqual(h.office.agents[KID].id, old, "Pixtuoid never sees a reused id")
+        h.sync([agent("working", KID, "codex")], [ps_row(KID, children=[])])
+        self.assertEqual(h.events(), [], "Stable after re-entry")
+
+    def test_subagents_of_an_antigravity_root_survive_an_observation_gap(self):
+        h = Harness()
+        rows = [agent("working", SID, "antigravity")]
+        h.sync(rows, [ps_row(SID, children=[child(SUB)])])
+        self.assertIsNone(h.office.agents["child:" + SUB].parent)
+        h.sync(rows, [ps_row(SID, children=[], observation="unverifiable")])
+        self.assertIn("child:" + SUB, h.office.agents)
+        h.sync([], [])
+        self.assertEqual(h.office.agents, {}, "Closing the owner closes its subagents")
+
     def test_unconfigured_source_is_skipped(self):
         h = Harness(configured=("codex",))
         self.assertEqual(h.sync([agent("working", SID, "claude")], [ps_row(SID, children=[child(SUB)])]), {})
