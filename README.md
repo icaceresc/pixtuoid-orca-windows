@@ -1,55 +1,76 @@
-# Pixtuoid para Orca en Windows
+🇬🇧 **English** · 🇵🇾 [Español](README.es.md) · 🇩🇪 [Deutsch](README.de.md) · 🇯🇵 [日本語](README.ja.md)
 
-Una oficina flotante que muestra las sesiones locales de **Claude Code, Codex, Antigravity y OpenCode** que reporta Orca. Se instala en su propio clon y funciona sin A.I.W.S.
+# Pixtuoid for Orca on Windows
 
-## Instalar
+A floating pixel-art office that shows your local Orca agent sessions as coworkers.
 
-1. Abre Orca. Comprueba en PowerShell que tienes Python 3.11 o posterior de 64 bits y que la CLI de Orca ve tus agentes.
+## What it shows
 
-   ~~~powershell
-   python --version
-   orca agent installed --environment local --json
-   ~~~
+One character per agent session that Orca identifies on this machine: **Claude Code, Codex, OpenCode and Antigravity**. Characters work while their agent runs a turn, rest when it finishes, and leave when the session closes.
 
-2. Desde el clon, ejecuta:
+## Requirements
 
-   ~~~powershell
-   python instalar.py
-   ~~~
+- Windows x64 with DirectX 12
+- Python 3.11+ (64-bit)
+- Orca running, with at least one supported agent installed
+- `claude`, `codex` or `agy` in `PATH` for the Claude Code, Codex or Antigravity sources
 
-   Si `python` apunta a una versión anterior, usa el lanzador de Windows con la versión instalada, por ejemplo **py -3.13 instalar.py**. El acceso directo usará el `pythonw.exe` de ese mismo Python.
+## Quick install
 
-   El instalador descarga Pixtuoid v0.23.0 para Windows x64 y comprueba su SHA-256. Usa **DirectX 12** para la ventana flotante. Para preparar cada perfil aislado, Claude Code, Codex y Antigravity necesitan sus comandos respectivos en PATH: **claude**, **codex** y **agy**. Si quieres configurar un subconjunto, usa por ejemplo **python instalar.py --sources claude-code codex**.
+```powershell
+git clone https://github.com/icaceresc/pixtuoid-orca-windows.git
+cd pixtuoid-orca-windows
+py -3 instalar.py
+py -3 -m unittest -v test_oficina
+```
 
-3. Antes del primer uso, ejecuta las pruebas de sincronización (sin conectar agentes):
+The installer downloads Pixtuoid v0.23.0, verifies its SHA-256 and connects the agents Orca reports. To limit sources: `py -3 instalar.py --sources claude-code codex`.
 
-   ~~~powershell
-   python -m unittest -v test_oficina
-   ~~~
+## Open the office
 
-4. Abre **Abrir oficina** con doble clic. En una sesión real de Orca inicia un turno y comprueba que el personaje se activa y vuelve a reposo cuando termina.
+Double-click **`Abrir oficina.lnk`** in the clone. Only one office runs at a time. Run `py -3 oficina.py --evidence` to log states to `actividad/`.
 
-   Para registrar la comprobación en archivos locales, puedes abrir la oficina con **python oficina.py --evidence**. Los estados quedan en **actividad/**.
+## Controls
 
-## Controles
+| Action | Input |
+|---|---|
+| Move | Drag an empty area |
+| Resize | Drag the bottom-right corner |
+| Zoom | `Ctrl` `+` / `Ctrl` `-` / `Ctrl` `0` |
+| Help · Pause · Theme | `?` · `P` · `T` |
+| Close and save size and position | `Q` |
 
-- Arrastra una zona vacía para mover la ventana, incluso a otra pantalla.
-- Arrastra la esquina inferior derecha para redimensionarla.
-- Usa **Ctrl + +** o **Ctrl + -** para el zoom y **Ctrl + 0** para restablecerlo.
-- Pulsa **Q** con la ventana enfocada para cerrarla y guardar su posición.
+## Visible states
 
-## Cómo obtiene la actividad
+| Orca state | In the office |
+|---|---|
+| `working` | Character at the desk, active |
+| `waiting` / `blocked` | Character asking for permission |
+| `done` | Character resting |
+| Session closed | Character leaves |
 
-El adaptador consulta los estados de las sesiones con **orca agent list** y los traduce al formato de Pixtuoid. Solo proyecta los identificadores, el proveedor, el estado y la carpeta. Los eventos de pantalla representan el estado del turno que conoce Orca. Los archivos de Pixtuoid, las configuraciones aisladas y las trazas se generan dentro del clon y Git los ignora. Se usan los hooks que Orca ya tiene para reportar su actividad.
+## Limitations
 
-El adaptador muestra **sesiones locales identificadas por Orca**: una terminal todavía sin `orcaSessionId` aparecerá después de que su agente reporte la primera actividad. Al abrir la oficina, se omiten sesiones que ya estaban finalizadas para no mostrar antiguos agentes dormidos; las sesiones vistas trabajando sí pasan a reposo cuando terminan. Los subagentes que Orca no exponga como sesiones independientes no tienen personaje propio. Los estados se derivan de Orca: no representan herramientas, tokens o razonamiento interno por agente.
+- Main agent sessions only. Subagents have no character of their own.
+- Sessions already finished when the office opens are not shown.
+- States mirror Orca's turn state, not tools, tokens or reasoning.
+- Orca is polled about every 2 seconds, so very short turns may be missed.
+- `waiting` / `blocked` have not been verified with live sessions yet.
+- Local Orca host only. Remote Orca environments are ignored.
 
-Verificado el 2026-11-19 en Windows 11 x64 con Python 3.13 y sesiones reales lanzadas desde Orca: Claude Code, Codex, OpenCode 2 y Antigravity mostraron su personaje y completaron trabajando → finalizado. Los estados `waiting`/`blocked` (permisos pendientes) y los subagentes no se observaron en esa prueba. Cada instalación depende de que Orca pueda listar esos agentes en su host local.
+## Privacy
 
-Si Orca tarda más de 5 s en responder (por ejemplo, al lanzar varios agentes a la vez), la oficina registra `orca-sync-error` y se resincroniza sola en el siguiente ciclo.
+- From `orca agent list` the office uses only the session ID, provider, state and folder. Prompts and replies are never forwarded or stored.
+- The adapter's only network access is the installer's download of the pinned release from GitHub.
+- The app, the isolated agent profile and the logs stay inside the clone (`app/`, `perfil/`, `actividad/`). Git ignores them.
+- Global agent and Orca settings are not modified.
 
-## Desinstalar
+## Uninstall
 
-Cierra la ventana con **Q** y elimina el clon. El acceso directo, la aplicación, el perfil aislado y las trazas están dentro de esa carpeta.
+Close the office with `Q` and delete the clone folder. Nothing is installed outside it.
 
-[Pixtuoid v0.23.0](https://github.com/pixtuoid/pixtuoid/releases/tag/v0.23.0) · [Configuración de la ventana](https://pixtuoid.dev/config/#the-floating-window)
+## Credits and license
+
+- [Pixtuoid](https://github.com/pixtuoid/pixtuoid) by Ivan Wang, MIT License. Downloaded at install time, not redistributed.
+- Independent adapter, not an official Pixtuoid or Orca project.
+- This repository does not include a license yet.
