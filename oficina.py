@@ -164,8 +164,13 @@ def sync(orca, env, trace, sessions, paths, record, configured):
         if sid not in sessions:
             worktree = row.get("worktreeId")
             if worktree and worktree not in paths:
-                result = orca_json(orca, "worktree", "show", "--worktree", f"id:{worktree}")
-                paths[worktree] = result["worktree"]["path"]
+                # One unresolvable workspace must not freeze every other session.
+                try:
+                    result = orca_json(orca, "worktree", "show", "--worktree", f"id:{worktree}")
+                    paths[worktree] = result["worktree"]["path"]
+                except (OSError, ValueError, KeyError, TypeError, RuntimeError,
+                        subprocess.SubprocessError):
+                    paths[worktree] = worktree.partition("::")[2] or LAB
             sessions[sid] = Session(row, paths.get(worktree, LAB), trace)
         session = sessions[sid]
         if state != session.state:
@@ -234,7 +239,8 @@ def main():
                     if failed:
                         record("orca-reconnected")
                     failed = False
-                except (OSError, ValueError, KeyError, RuntimeError, subprocess.SubprocessError) as error:
+                except (OSError, ValueError, KeyError, TypeError, AttributeError, RuntimeError,
+                        subprocess.SubprocessError) as error:
                     if not failed:
                         record(f"orca-sync-error:{type(error).__name__}")
                     failed = True

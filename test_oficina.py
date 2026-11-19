@@ -79,6 +79,26 @@ class SessionSyncTests(unittest.TestCase):
         self.assertEqual(events[0][-1], "closed")
         self.assertEqual(transition.call_args.args[2], "closed")
 
+    def test_unresolvable_worktree_does_not_block_sync(self):
+        other = "orca_session_id:0b7c1f5e-2d0a-4b8e-9f1e-3c5d7a9b1e2f"
+        rows = [dict(agent("working"), worktreeId="repo::C:\\work\\gone"),
+                agent("working", other)]
+        sessions, paths, records = {}, {}, []
+
+        def fake_orca_json(_orca, *args):
+            if args[:2] == ("worktree", "show"):
+                raise oficina.subprocess.TimeoutExpired("orca", 5)
+            return {"agents": rows, "truncated": False}
+
+        with (
+            patch.object(oficina, "orca_json", side_effect=fake_orca_json),
+            patch.object(oficina.Session, "transition", autospec=True),
+        ):
+            oficina.sync("orca.exe", {}, Path("."), sessions, paths,
+                         lambda *event: records.append(event), {"codex"})
+        self.assertEqual(set(sessions), {SID, other})
+        self.assertEqual(sessions[SID].cwd, "C:\\work\\gone")
+
     def test_truncated_list_is_not_misread_as_agents_exiting(self):
         self.run_snapshot([], truncated=True)
 
