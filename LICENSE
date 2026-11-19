@@ -19,9 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
-Third-party notices:
-- docs/flags/*.svg come from lipis/flag-icons (MIT); see docs/flags/LICENSE.
-- Pixtuoid (MIT, Ivan Wang) is downloaded by the installer and is not
-  redistributed in this repository.
-- Orca is a separate product and is not included in this repository.
