@@ -47,10 +47,13 @@ def orca_json(orca, *args):
     try:
         answer = json.loads(response.stdout)
     except ValueError:
+        answer = None
+    if not isinstance(answer, dict):
         answer = {}
     if response.returncode or not answer.get("ok"):
         # Orca's own error code and message, never the command's data.
-        error = answer.get("error") or {}
+        error = answer.get("error")
+        error = error if isinstance(error, dict) else {}
         detail = error.get("code") or response.stderr.decode("utf-8", "replace").strip()[-300:]
         raise RuntimeError(f"orca {' '.join(args[:2])} failed ({response.returncode}): "
                            f"{detail} {error.get('message', '')}".strip())
@@ -62,9 +65,12 @@ def clear_traces(trace, names=None):
     for rollout in trace.rglob("rollout-*.jsonl"):
         rollout.unlink()
     # The same for the provider name cards of a previous run (see Agent.name_card).
-    if names is not None:
+    if names is not None and names.is_dir():
         for card in names.rglob("agent-*.jsonl"):
             card.unlink()
+        for folder in sorted(names.rglob("*"), key=lambda path: len(path.parts), reverse=True):
+            if folder.is_dir() and not any(folder.iterdir()):
+                folder.rmdir()
 
 def emit(env, source, payload, event=None):
     arguments = [str(SHIM), "--source", source]
@@ -144,6 +150,26 @@ class Agent:
             return None
         return self.names / self.parent.session / "subagents" / f"agent-{self.id}.jsonl"
 
+    def write_card(self):
+        # Only a label: a file the profile refuses must never stall the office.
+        card = self.name_card
+        if card:
+            line = {"type": "assistant", "attributionAgent": self.provider, "cwd": self.cwd,
+                    "sessionId": self.parent.session, "message": {"content": []}}
+            try:
+                card.parent.mkdir(parents=True, exist_ok=True)
+                card.write_text(json.dumps(line) + "\n", encoding="utf-8")
+            except OSError:
+                pass
+
+    def drop_card(self):
+        card = self.name_card
+        if card:
+            try:
+                card.unlink(missing_ok=True)
+            except OSError:
+                pass  # cleared at the next start
+
     def depth(self):
         return 0 if self.parent is None else 1 + self.parent.depth()
 
@@ -172,12 +198,7 @@ class Agent:
             emit(env, self.source, dict(common, **fields), event)
         if prev is None:
             hook("SubagentStart", agent_type=self.label or "subagent")
-            card = self.name_card
-            if card:
-                card.parent.mkdir(parents=True, exist_ok=True)
-                line = {"type": "assistant", "attributionAgent": self.provider, "cwd": self.cwd,
-                        "sessionId": self.parent.session, "message": {"content": []}}
-                card.write_text(json.dumps(line) + "\n", encoding="utf-8")
+            self.write_card()
         if prev in ACTIVE:
             hook("Stop", turn_id=str(self.turn))
         if state == "working":
@@ -190,8 +211,7 @@ class Agent:
                 hook("Notification", notification_type="permission_prompt", message=f"Orca: {state}")
         elif state == "closed":
             hook("SubagentStop", agent_transcript_path="")
-            if self.name_card:
-                self.name_card.unlink(missing_ok=True)
+            self.drop_card()
 
     def _session_hooks(self, env, prev, state):
         source = self.source
@@ -310,7 +330,7 @@ class Office:
             try:
                 result = orca_json(self.orca, "worktree", "show", "--worktree", f"id:{worktree}")
                 self.paths[worktree] = result["worktree"]["path"]
-            except (OSError, ValueError, KeyError, TypeError, RuntimeError,
+            except (OSError, ValueError, KeyError, TypeError, AttributeError, RuntimeError,
                     subprocess.SubprocessError):
                 self.paths[worktree] = worktree.partition("::")[2] or HOME
         return self.paths[worktree]
@@ -581,6 +601,10 @@ def main():
         finally:
             if office and office.poll() is None:
                 close_window(office)
+            try:
+                clear_traces(trace, Agent.names)  # nothing of this run outlives the office
+            except OSError:
+                pass
             if headless and headless.poll() is None:
                 headless.terminate()
                 headless.wait(timeout=8)

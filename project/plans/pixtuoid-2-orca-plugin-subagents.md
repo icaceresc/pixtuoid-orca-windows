@@ -8,6 +8,7 @@ status: active
 commits: authorized
 branch: feat/orca-plugin-subagents
 delegation: Workers for API research and independent review are authorized when they add net value.
+publication: authorized by the Human (merge PR #4, tag v2.0.0, `orca-plugin` topic, orca.dev/plugins).
 
 ## Findings
 - Orca 1.4.263 exposes nesting only through `orca worktree ps --json`: agent rows carry
@@ -17,20 +18,27 @@ delegation: Workers for API research and independent review are authorized when 
   `status` and the plugin API (`agents.list`, `agent.status.changed`) expose no subagents.
 - Pixtuoid v0.23.0 links a child only to a parent of the same source (SubagentStart for
   claude-code/codex, `parentID` for opencode); Antigravity has no parent link. Cross-provider
-  children are drawn in the parent's source (correct tree and cap, parent's provider label).
+  children are drawn in the parent's source. In a Claude Code tree a one-line subagent
+  transcript ("name card", `attributionAgent`) relabels them with their real provider; Codex and
+  OpenCode trees have no label path (issue #5).
+- Orca starts plugin workers without APPDATA, which the Orca CLI needs; the worker restores the
+  per-user folders.
 
 ## Steps
 - [x] Research Orca and Pixtuoid subagent interfaces: findings above, verified against v1.4.263 / v0.23.0 sources and live `worktree ps` output
-- [x] Hierarchical projection in oficina.py (Agent/Office), stop event, data folder split: 29 unit tests pass
+- [x] Hierarchical projection in oficina.py (Agent/Office), stop event, data folder split: 36 unit tests pass
 - [x] Plugin manifest and worker (plugin/worker.mjs): `orca plugin validate .` ok, 0 capabilities, dev load approved
 - [x] Live validation through the plugin worker commands (install 21 s, open, close, reopen): Claude parent with two simultaneous subagents; short one left first (6 -> 5 characters); cancelled subagent left ~4 s after stop; Codex -> Claude, OpenCode -> Codex and Antigravity -> OpenCode two-level workers (three levels under the Claude root); office matched Orca's 5 live sessions with no ghosts; reopened at saved 960x640 @ 300,200
-- [x] Real screenshots of parents and children (local, not committed: they show private folder names)
+- [x] Real screenshots: docs/office.png is public (private repo label pixelated); other captures stay local
 - [x] READMEs (EN/ES/DE/JA) and CI (Python tests + `node --check` of the worker)
 - [x] Independent review of the diff: 2 medium + 5 low findings; fixed M1 (remove-data retry), M2 (re-entry id), L1 (Antigravity-owned subagents), L2/L3 (stop waits for exit, install rollback), L4 (marker only in new/empty folder); L5 (repeated start after a failed hook) accepted; remove-data verified in scratch with and without marker
 - [x] Push branch, open PR, CI green: https://github.com/icaceresc/pixtuoid-orca-windows/pull/4
-- [ ] Palette commands run by the Human inside Orca (no CLI runs palette commands; GUI driving was stopped to avoid typing into the Human's draft)
+- [x] Palette commands run from Orca's real palette: Close (office-exit:0), Remove Data (data folder removed, marker-guarded), Install (failed first: no APPDATA in the worker; fixed, then 4 sources prepared), Open (office read Orca inside the worker), Close again with final code (0 cards, 0 folders left); geometry backed up and restored
+- [x] Real provider names for cross-provider children: Codex and Antigravity workers under a Claude root labelled "codex"/"antigravity" live, same character, no duplicate; Codex/OpenCode trees documented and registered as issue #5
+- [x] Second independent review (release delta): no blockers; fixed card I/O resilience, orca_json on odd answers, empty-folder cleanup, cards cleared at close, README root wording
+- [ ] Merge PR #4 after CI passes on the final commit
+- [ ] Tag v2.0.0, add the `orca-plugin` topic, verify orca.dev/plugins/icaceresc/pixtuoid-orca-windows
+- [ ] Sync local main; replace the development load with the published plugin; reopen the office
 
-Open, outside this mission's DONE: merge to main, then tag `v2.0.0` and add the `orca-plugin` topic
-for orca.dev/plugins (Human decision; listing publishes under the owner's GitHub identity).
 Not live-verified: native (non-orchestration) subagents of Codex and OpenCode; a top-level
 Antigravity session as parent (covered by unit tests only).

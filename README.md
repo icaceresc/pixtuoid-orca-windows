@@ -87,7 +87,7 @@ The window floats outside Orca, so you can keep it on a second monitor. Only one
 
 ## Limitations
 
-- Pixtuoid v0.23.0 links a child only to a parent of the same provider. A worker of another provider is drawn under its parent with the cap. Under a Claude Code parent it shows its own provider name; under a Codex or OpenCode parent it shows the parent's provider label.
+- Pixtuoid v0.23.0 links a child only to a parent of the same provider. A worker of another provider is drawn under its parent with the cap. In a tree whose top agent is Claude Code it shows its own provider name; in a Codex or OpenCode tree it shows the top agent's provider label.
 - Pixtuoid cannot draw children under a top-level Antigravity session: its workers appear as separate coworkers in the same team color. An Antigravity worker that is itself a child can have children.
 - A worker whose dispatcher closes first leaves with it, then returns as a separate coworker.
 - Only subagents that Orca itself observes appear. The hierarchy comes from `orca worktree ps`, the only Orca interface that exposes it.
@@ -101,7 +101,7 @@ The window floats outside Orca, so you can keep it on a second monitor. Only one
 
 - The office reads only IDs, parent links, provider, agent type, state and folder from `orca agent list` and `orca worktree ps`. Prompts, replies and tool inputs are never forwarded or stored.
 - The adapter's only network access is the download of the pinned Pixtuoid release from GitHub.
-- The app, the isolated agent profile and the logs stay in the clone or in `%LOCALAPPDATA%\PixtuoidOrca` (`app/`, `perfil/`, `actividad/`). To name a worker's provider, the office writes a one-line card (provider and folder) to the isolated profile and deletes it when the worker leaves.
+- The app, the isolated agent profile and the logs stay in the clone or in `%LOCALAPPDATA%\PixtuoidOrca` (`app/`, `perfil/`, `actividad/`). To name a worker's provider, the office writes a one-line card (provider and folder) to the isolated profile and deletes it when the worker leaves or the office closes.
 - Global agent and Orca settings are not modified.
 
 ## Uninstall

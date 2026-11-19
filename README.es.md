@@ -87,7 +87,7 @@ La ventana flota fuera de Orca, así que puedes dejarla en un segundo monitor. S
 
 ## Limitaciones
 
-- Pixtuoid v0.23.0 solo enlaza un hijo con un padre del mismo proveedor. Un worker de otro proveedor se dibuja bajo su padre, con la gorra. Bajo un padre Claude Code muestra el nombre de su propio proveedor; bajo un padre Codex u OpenCode muestra la etiqueta de proveedor del padre.
+- Pixtuoid v0.23.0 solo enlaza un hijo con un padre del mismo proveedor. Un worker de otro proveedor se dibuja bajo su padre, con la gorra. En un árbol cuyo agente raíz es Claude Code muestra el nombre de su propio proveedor; en un árbol de Codex u OpenCode muestra la etiqueta de proveedor de la raíz.
 - Pixtuoid no puede dibujar hijos bajo una sesión de Antigravity de nivel superior: sus workers aparecen como compañeros separados con el mismo color de equipo. Un worker de Antigravity que ya es hijo sí puede tener hijos.
 - Un worker cuyo padre se cierra antes se va con él y vuelve como compañero separado.
 - Solo aparecen los subagentes que Orca observa. La jerarquía viene de `orca worktree ps`, la única interfaz de Orca que la expone.
@@ -101,7 +101,7 @@ La ventana flota fuera de Orca, así que puedes dejarla en un segundo monitor. S
 
 - De `orca agent list` y `orca worktree ps` la oficina solo lee IDs, enlaces padre-hijo, proveedor, tipo de agente, estado y carpeta. Nunca reenvía ni guarda prompts, respuestas o entradas de herramientas.
 - El único acceso a la red del adaptador es la descarga de la versión fijada de Pixtuoid desde GitHub.
-- La aplicación, el perfil aislado de agentes y los registros quedan en el clon o en `%LOCALAPPDATA%\PixtuoidOrca` (`app/`, `perfil/`, `actividad/`). Para nombrar el proveedor de un worker, la oficina escribe una tarjeta de una línea (proveedor y carpeta) en el perfil aislado y la borra cuando el worker se va.
+- La aplicación, el perfil aislado de agentes y los registros quedan en el clon o en `%LOCALAPPDATA%\PixtuoidOrca` (`app/`, `perfil/`, `actividad/`). Para nombrar el proveedor de un worker, la oficina escribe una tarjeta de una línea (proveedor y carpeta) en el perfil aislado y la borra cuando el worker se va o la oficina se cierra.
 - No se modifica la configuración global de los agentes ni de Orca.
 
 ## Desinstalar

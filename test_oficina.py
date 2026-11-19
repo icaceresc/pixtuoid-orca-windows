@@ -276,6 +276,23 @@ class HierarchyTests(unittest.TestCase):
         self.assertEqual(h.sync([agent("working", SID, "claude")], [ps_row(SID, children=[child(SUB)])]), {})
 
 
+class OrcaCliTests(unittest.TestCase):
+    def answer(self, stdout, code=0):
+        done = oficina.subprocess.CompletedProcess([], code, stdout, b"boom")
+        with patch.object(oficina.subprocess, "run", return_value=done):
+            return oficina.orca_json("orca.exe", "agent", "list")
+
+    def test_unexpected_answers_raise_runtime_errors(self):
+        for stdout, code in ((b"null", 0), (b'{"ok": false, "error": "text"}', 1), (b"not json", 1)):
+            with self.assertRaises(RuntimeError):
+                self.answer(stdout, code)
+
+    def test_error_names_orca_code_not_command_data(self):
+        stdout = b'{"ok": false, "error": {"code": "runtime_unavailable", "message": "APPDATA is not set"}}'
+        with self.assertRaisesRegex(RuntimeError, "agent list failed \\(1\\): runtime_unavailable APPDATA"):
+            self.answer(stdout, 1)
+
+
 class TraceTests(unittest.TestCase):
     def test_previous_codex_rollouts_are_cleared_at_startup(self):
         with tempfile.TemporaryDirectory(prefix="tmp-test-", dir=Path(__file__).parent) as directory:
@@ -359,6 +376,22 @@ class NameCardTests(unittest.TestCase):
         for parent_kind, child_kind in (("claude", "claude"), ("codex", "claude"), ("opencode2", "codex")):
             _h, _names, cards = self.run_tree(parent_kind, child_kind)
             self.assertEqual(cards, [], f"{parent_kind} -> {child_kind}")
+
+    def test_a_refused_card_never_stalls_the_office(self):
+        h = Harness()
+        with patch.object(oficina.Agent, "names", Path(".")), \
+                patch.object(Path, "write_text", side_effect=PermissionError("locked")), \
+                patch.object(Path, "mkdir"):
+            h.sync([agent("working", SID, "claude"), agent("working", KID, "codex")],
+                   [ps_row(SID, children=[]), ps_row(KID, parent=SID, children=[])])
+        self.assertEqual(h.office.agents[KID].state, "working")
+
+    def test_cleanup_also_removes_empty_folders(self):
+        with tempfile.TemporaryDirectory(prefix="tmp-test-", dir=Path(__file__).parent) as directory:
+            names = Path(directory) / "names"
+            (names / SID / "subagents").mkdir(parents=True)
+            oficina.clear_traces(Path(directory) / "codex", names)
+            self.assertEqual(list(names.iterdir()), [])
 
     def test_cards_of_a_previous_run_are_cleared(self):
         with tempfile.TemporaryDirectory(prefix="tmp-test-", dir=Path(__file__).parent) as directory:
