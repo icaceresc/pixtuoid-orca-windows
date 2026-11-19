@@ -45,6 +45,12 @@ def orca_json(orca, *args):
         raise RuntimeError("Orca did not return a successful session response")
     return answer["result"]
 
+def clear_traces(trace):
+    # Pixtuoid restores Codex sessions from rollout files at startup; the
+    # synthetic rollouts of a previous run would come back as ghost coworkers.
+    for rollout in trace.rglob("rollout-*.jsonl"):
+        rollout.unlink()
+
 def emit(env, source, payload, event=None):
     arguments = [str(SHIM), "--source", source]
     if source == "antigravity":
@@ -147,20 +153,24 @@ def sync(orca, env, trace, sessions, paths, record, configured):
     if snapshot.get("truncated"):
         raise RuntimeError("Orca returned a truncated session list")
     rows = {row["orcaSessionId"]: row for row in snapshot["agents"]
-            if SOURCES.get(row.get("agent")) in configured and row.get("state") in ACTIVE | {"done"}}
+            if isinstance(row.get("orcaSessionId"), str) and row["orcaSessionId"]
+            and SOURCES.get(row.get("agent")) in configured and row.get("state") in ACTIVE | {"done"}}
     for sid, row in rows.items():
         state = row["state"]
+        # A completed session predating this monitor is not a live coworker.
+        # Avoid querying agent show for every old idle pane on every poll.
         if state == "done" and sid not in sessions:
-            if sid in paths:
-                continue
-            if not orca_json(orca, "agent", "show", sid)["places"]:
-                paths[sid] = None
-                continue
+            continue
         if sid not in sessions:
             worktree = row.get("worktreeId")
             if worktree and worktree not in paths:
-                result = orca_json(orca, "worktree", "show", "--worktree", f"id:{worktree}")
-                paths[worktree] = result["worktree"]["path"]
+                # One unresolvable workspace must not freeze every other session.
+                try:
+                    result = orca_json(orca, "worktree", "show", "--worktree", f"id:{worktree}")
+                    paths[worktree] = result["worktree"]["path"]
+                except (OSError, ValueError, KeyError, TypeError, RuntimeError,
+                        subprocess.SubprocessError):
+                    paths[worktree] = worktree.partition("::")[2] or LAB
             sessions[sid] = Session(row, paths.get(worktree, LAB), trace)
         session = sessions[sid]
         if state != session.state:
@@ -193,6 +203,7 @@ def main():
     pipe = rf"\\.\pipe\pixtuoid-orca-{uuid.uuid4().hex}"
     trace = PROFILE / "codex" / "sessions"
     trace.mkdir(parents=True, exist_ok=True)
+    clear_traces(trace)
     env = office_env(pipe)
     audit = "--evidence" in sys.argv[1:]
     with (run / "orca-estados.jsonl").open("w", encoding="utf-8", buffering=1) as log:
@@ -228,7 +239,8 @@ def main():
                     if failed:
                         record("orca-reconnected")
                     failed = False
-                except (OSError, ValueError, KeyError, RuntimeError, subprocess.SubprocessError) as error:
+                except (OSError, ValueError, KeyError, TypeError, AttributeError, RuntimeError,
+                        subprocess.SubprocessError) as error:
                     if not failed:
                         record(f"orca-sync-error:{type(error).__name__}")
                     failed = True
