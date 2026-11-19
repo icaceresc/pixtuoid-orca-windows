@@ -23,7 +23,7 @@ delegation: Workers for API research and independent review are authorized when 
 - [x] Research Orca and Pixtuoid subagent interfaces: findings above, verified against v1.4.263 / v0.23.0 sources and live `worktree ps` output
 - [x] Hierarchical projection in oficina.py (Agent/Office), stop event, data folder split: 27 unit tests pass
 - [x] Plugin manifest and worker (plugin/worker.mjs): `orca plugin validate .` ok, 0 capabilities, dev load approved
-- [x] Live validation through the plugin worker commands (install 21 s, open, close, reopen): Claude parent with two simultaneous subagents; short one left first (6 -> 5 characters); cancelled subagent left ~4 s after stop; Codex -> Claude, OpenCode -> Codex two-level workers; office matched Orca's 5 live sessions with no ghosts; reopened at saved 960x640 @ 300,200
+- [x] Live validation through the plugin worker commands (install 21 s, open, close, reopen): Claude parent with two simultaneous subagents; short one left first (6 -> 5 characters); cancelled subagent left ~4 s after stop; Codex -> Claude, OpenCode -> Codex and Antigravity -> OpenCode two-level workers (three levels under the Claude root); office matched Orca's 5 live sessions with no ghosts; reopened at saved 960x640 @ 300,200
 - [x] Real screenshots of parents and children (local, not committed: they show private folder names)
 - [x] READMEs (EN/ES/DE/JA) and CI (Python tests + `node --check` of the worker)
 - [ ] Independent review of the diff
@@ -32,5 +32,5 @@ delegation: Workers for API research and independent review are authorized when 
 
 Open, outside this mission's DONE: merge to main, then tag `v2.0.0` and add the `orca-plugin` topic
 for orca.dev/plugins (Human decision; listing publishes under the owner's GitHub identity).
-Not live-verified: native (non-orchestration) subagents of Codex and OpenCode; Antigravity as a
-parent (its level-1 worker never dispatched its child).
+Not live-verified: native (non-orchestration) subagents of Codex and OpenCode; a top-level
+Antigravity session as parent (covered by unit tests only).
