@@ -45,6 +45,12 @@ def orca_json(orca, *args):
         raise RuntimeError("Orca did not return a successful session response")
     return answer["result"]
 
+def clear_traces(trace):
+    # Pixtuoid restores Codex sessions from rollout files at startup; the
+    # synthetic rollouts of a previous run would come back as ghost coworkers.
+    for rollout in trace.rglob("rollout-*.jsonl"):
+        rollout.unlink()
+
 def emit(env, source, payload, event=None):
     arguments = [str(SHIM), "--source", source]
     if source == "antigravity":
@@ -192,6 +198,7 @@ def main():
     pipe = rf"\\.\pipe\pixtuoid-orca-{uuid.uuid4().hex}"
     trace = PROFILE / "codex" / "sessions"
     trace.mkdir(parents=True, exist_ok=True)
+    clear_traces(trace)
     env = office_env(pipe)
     audit = "--evidence" in sys.argv[1:]
     with (run / "orca-estados.jsonl").open("w", encoding="utf-8", buffering=1) as log:

@@ -1,4 +1,5 @@
 """Regression tests for the read-only Orca session projection (no Orca required)."""
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -80,6 +81,19 @@ class SessionSyncTests(unittest.TestCase):
 
     def test_truncated_list_is_not_misread_as_agents_exiting(self):
         self.run_snapshot([], truncated=True)
+
+
+class TraceTests(unittest.TestCase):
+    def test_previous_codex_rollouts_are_cleared_at_startup(self):
+        with tempfile.TemporaryDirectory(prefix="tmp-test-", dir=Path(__file__).parent) as directory:
+            trace = Path(directory)
+            old = oficina.Session(agent("working"), Path("."), trace)
+            old.codex_record("session_meta", {"id": old.id})
+            unrelated = trace / "notes.txt"
+            unrelated.write_text("keep", encoding="utf-8")
+            oficina.clear_traces(trace)
+            self.assertFalse(old.rollout.exists())
+            self.assertTrue(unrelated.exists())
 
 
 if __name__ == "__main__":
