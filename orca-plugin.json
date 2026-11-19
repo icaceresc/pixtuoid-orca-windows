@@ -1,0 +1,48 @@
+{
+  "$schema": "https://orca.dev/schemas/orca-plugin.json",
+  "manifestVersion": 2,
+  "id": "pixtuoid-office",
+  "name": "Pixtuoid Office (unofficial)",
+  "version": "2.0.0",
+  "description": "Opens a floating pixel-art office on Windows where your local Orca agents, their orchestrated workers and their subagents appear as coworkers.",
+  "author": {
+    "name": "icaceresc",
+    "url": "https://github.com/icaceresc"
+  },
+  "repository": "https://github.com/icaceresc/pixtuoid-orca-windows",
+  "homepage": "https://github.com/icaceresc/pixtuoid-orca-windows",
+  "license": "MIT",
+  "engines": {
+    "orca": ">=1.4.263"
+  },
+  "execution": "trusted-worker",
+  "main": "plugin/worker.mjs",
+  "screenshots": [
+    {
+      "path": "docs/office.png",
+      "alt": "Pixel-art office: Claude Code agents with a Codex and an Antigravity worker, each labelled with its provider, under their Claude parent.",
+      "caption": "Cross-provider workers under their Claude Code parent"
+    }
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "id": "pixtuoid.open",
+        "title": "Pixtuoid: Open office window"
+      },
+      {
+        "id": "pixtuoid.close",
+        "title": "Pixtuoid: Close office window"
+      },
+      {
+        "id": "pixtuoid.install",
+        "title": "Pixtuoid: Install or update the office app"
+      },
+      {
+        "id": "pixtuoid.removeData",
+        "title": "Pixtuoid: Remove downloaded app and local data"
+      }
+    ]
+  },
+  "capabilities": []
+}

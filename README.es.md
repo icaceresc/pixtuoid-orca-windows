@@ -7,20 +7,48 @@
 
 # Pixtuoid para Orca en Windows
 
-Una oficina flotante en pixel art que muestra tus sesiones locales de agentes de Orca como compañeros de trabajo.
+Una oficina flotante en pixel art que muestra tus agentes locales de Orca, sus workers y sus subagentes como compañeros de trabajo. Se instala como plugin de Orca o se ejecuta desde un clon.
+
+![Un worker Codex y uno Antigravity, con el nombre de su proveedor, bajo su padre Claude Code](docs/office.png)
 
 ## Qué muestra
 
-Un personaje por cada sesión de agente que Orca identifica en este equipo: **Claude Code, Codex, OpenCode y Antigravity**. El personaje trabaja mientras su agente ejecuta un turno, descansa cuando termina y se va cuando se cierra la sesión.
+Un personaje por cada agente que Orca identifica en este equipo. Los hijos llevan una gorra del color de su equipo y se van con su padre.
+
+| En Orca | En la oficina |
+|---|---|
+| Sesión de agente (Claude Code, Codex, OpenCode, Antigravity) | Su propio personaje |
+| Worker lanzado con la orquestación de Orca, a cualquier profundidad | Hijo del agente que lo lanzó |
+| Subagente que Orca observa dentro de una sesión | Hijo de esa sesión |
+| Comando en segundo plano, monitor o llamada a herramienta | Sin personaje |
+
+Verificado con sesiones reales en Orca 1.4.263:
+
+| Proveedor | Como agente | Como worker hijo | Subagentes nativos |
+|---|---|---|---|
+| Claude Code | Sí | Sí | Sí |
+| Codex | Sí | Sí | Sin verificar |
+| OpenCode | Sí | Sí | Sin verificar |
+| Antigravity | Sí | Sí | Orca no reporta ninguno |
 
 ## Requisitos
 
 - Windows x64 con DirectX 12
-- Python 3.11 o posterior (64 bits)
-- Orca abierto, con al menos un agente compatible instalado
+- Python 3.11 o posterior (64 bits) con el lanzador `py`
+- Orca 1.4.263 o posterior, abierto, con al menos un agente compatible instalado
 - `claude`, `codex` o `agy` en `PATH` para las fuentes Claude Code, Codex o Antigravity
 
 ## Instalación rápida
+
+**Como plugin de Orca**
+
+```powershell
+orca plugin install icaceresc/pixtuoid-orca-windows
+```
+
+Orca muestra lo que el plugin puede hacer y pide tu aprobación: ejecuta su propio código y no solicita permisos de Orca. Después ejecuta **Pixtuoid: Install or update the office app** desde la paleta de comandos. Descarga Pixtuoid v0.23.0 en `%LOCALAPPDATA%\PixtuoidOrca`, verifica su SHA-256 y conecta los agentes que reporta Orca.
+
+**Desde un clon**
 
 ```powershell
 git clone https://github.com/icaceresc/pixtuoid-orca-windows.git
@@ -29,11 +57,14 @@ py -3 instalar.py
 py -3 -m unittest -v test_oficina
 ```
 
-El instalador descarga Pixtuoid v0.23.0, verifica su SHA-256 y conecta los agentes que reporta Orca. Para limitar las fuentes: `py -3 instalar.py --sources claude-code codex`.
+Para limitar las fuentes: `py -3 instalar.py --sources claude-code codex`.
 
 ## Abrir la oficina
 
-Haz doble clic en **`Abrir oficina.lnk`** dentro del clon. Solo se ejecuta una oficina a la vez. Con `py -3 oficina.py --evidence` los estados quedan registrados en `actividad/`.
+- Plugin: **Pixtuoid: Open office window** y **Pixtuoid: Close office window** en la paleta de comandos.
+- Clon: doble clic en **`Abrir oficina.lnk`**. Se cierra con `Q` o con `py -3 oficina.py --stop`.
+
+La ventana flota fuera de Orca, así que puedes dejarla en un segundo monitor. Solo se ejecuta una oficina por instalación. Con `py -3 oficina.py --evidence` los estados quedan registrados en `actividad/`.
 
 ## Controles
 
@@ -43,7 +74,7 @@ Haz doble clic en **`Abrir oficina.lnk`** dentro del clon. Solo se ejecuta una o
 | Redimensionar | Arrastrar la esquina inferior derecha |
 | Zoom | `Ctrl` `+` / `Ctrl` `-` / `Ctrl` `0` |
 | Ayuda · Pausa · Tema | `?` · `P` · `T` |
-| Cerrar y guardar tamaño y posición | `Q` |
+| Cerrar y guardar tamaño y posición | `Q` o el comando de cierre |
 
 ## Estados visibles
 
@@ -51,28 +82,34 @@ Haz doble clic en **`Abrir oficina.lnk`** dentro del clon. Solo se ejecuta una o
 |---|---|
 | `working` | Personaje en su escritorio, activo |
 | `waiting` / `blocked` | Personaje pidiendo permiso |
-| `done` | Personaje en reposo |
-| Sesión cerrada | El personaje se va |
+| `done` / `idle` | Personaje en reposo |
+| Sesión cerrada, subagente terminado o cancelado | El personaje se va; sus hijos se van antes |
 
 ## Limitaciones
 
-- Solo sesiones principales de agentes. Los subagentes no tienen personaje propio.
-- No se muestran las sesiones que ya habían terminado al abrir la oficina.
+- Pixtuoid v0.23.0 solo enlaza un hijo con un padre del mismo proveedor. Un worker de otro proveedor se dibuja bajo su padre, con la gorra. En un árbol cuyo agente raíz es Claude Code muestra el nombre de su propio proveedor; en un árbol de Codex u OpenCode muestra la etiqueta de proveedor de la raíz.
+- Pixtuoid no puede dibujar hijos bajo una sesión de Antigravity de nivel superior: sus workers aparecen como compañeros separados con el mismo color de equipo. Un worker de Antigravity que ya es hijo sí puede tener hijos.
+- Un worker cuyo padre se cierra antes se va con él y vuelve como compañero separado.
+- Solo aparecen los subagentes que Orca observa. La jerarquía viene de `orca worktree ps`, la única interfaz de Orca que la expone.
+- No se muestran los agentes que ya habían terminado al abrir la oficina.
 - Los estados reflejan el turno que conoce Orca, no herramientas, tokens ni razonamiento.
-- Orca se consulta aproximadamente cada 2 segundos, así que los turnos muy cortos pueden no verse.
+- Orca se consulta aproximadamente cada 1,25 segundos, así que los turnos muy cortos pueden no verse. Si Orca está ocupado, un hijo nuevo puede aparecer un momento antes de colocarse bajo su padre.
 - `waiting` / `blocked` todavía no se han verificado con sesiones reales.
 - Solo el host local de Orca. Se ignoran los entornos remotos.
 
 ## Privacidad
 
-- De `orca agent list` la oficina solo usa el ID de sesión, el proveedor, el estado y la carpeta. Nunca reenvía ni guarda prompts o respuestas.
-- El único acceso a la red del adaptador es la descarga de la versión fijada desde GitHub que hace el instalador.
-- La aplicación, el perfil aislado de agentes y los registros quedan dentro del clon (`app/`, `perfil/`, `actividad/`). Git los ignora.
+- De `orca agent list` y `orca worktree ps` la oficina solo lee IDs, enlaces padre-hijo, proveedor, tipo de agente, estado y carpeta. Nunca reenvía ni guarda prompts, respuestas o entradas de herramientas.
+- El único acceso a la red del adaptador es la descarga de la versión fijada de Pixtuoid desde GitHub.
+- La aplicación, el perfil aislado de agentes y los registros quedan en el clon o en `%LOCALAPPDATA%\PixtuoidOrca` (`app/`, `perfil/`, `actividad/`). Para nombrar el proveedor de un worker, la oficina escribe una tarjeta de una línea (proveedor y carpeta) en el perfil aislado y la borra cuando el worker se va o la oficina se cierra.
 - No se modifica la configuración global de los agentes ni de Orca.
 
 ## Desinstalar
 
-Cierra la oficina con `Q` y elimina la carpeta del clon. No se instala nada fuera de ella.
+- Plugin: ejecuta **Pixtuoid: Remove downloaded app and local data** y luego desinstala el plugin en Orca, en Settings → Plugins.
+- Clon: cierra la oficina y elimina la carpeta del clon.
+
+No se instala nada más.
 
 ## Créditos y licencia
 
