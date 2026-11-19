@@ -9,10 +9,18 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+// Orca starts plugin workers with a reduced environment (no APPDATA). The Orca CLI needs
+// APPDATA to find its runtime, so restore the standard per-user Windows folders.
+const PROFILE = process.env.USERPROFILE || homedir()
+const APPDATA = process.env.APPDATA || join(PROFILE, 'AppData', 'Roaming')
+const LOCALAPPDATA = process.env.LOCALAPPDATA || join(PROFILE, 'AppData', 'Local')
 // Data lives outside the plugin folder, which Orca replaces on every update.
-const HOME = join(process.env.LOCALAPPDATA || join(homedir(), 'AppData', 'Local'), 'PixtuoidOrca')
+const HOME = join(LOCALAPPDATA, 'PixtuoidOrca')
 const MARKER = join(HOME, '.pixtuoid-orca-home')
-const ENV = { ...process.env, PIXTUOID_ORCA_HOME: HOME, PYTHONDONTWRITEBYTECODE: '1', PYTHONUTF8: '1' }
+const ENV = {
+  ...process.env, USERPROFILE: PROFILE, APPDATA, LOCALAPPDATA,
+  PIXTUOID_ORCA_HOME: HOME, PYTHONDONTWRITEBYTECODE: '1', PYTHONUTF8: '1',
+}
 
 function python(script, args = [], { timeoutMs = 60_000 } = {}) {
   return new Promise((done) => {
@@ -90,8 +98,14 @@ async function removeData() {
 }
 
 export default function activate(orca) {
-  orca.commands.register('pixtuoid.open', open)
-  orca.commands.register('pixtuoid.close', close)
-  orca.commands.register('pixtuoid.install', install)
-  orca.commands.register('pixtuoid.removeData', removeData)
+  // Each result is shown in Orca and kept in `orca plugin logs` for support.
+  const logged = (id, run) => orca.commands.register(id, async () => {
+    const result = await run()
+    orca.log(`${id}: ${result}`)
+    return result
+  })
+  logged('pixtuoid.open', open)
+  logged('pixtuoid.close', close)
+  logged('pixtuoid.install', install)
+  logged('pixtuoid.removeData', removeData)
 }

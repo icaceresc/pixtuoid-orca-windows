@@ -9,6 +9,8 @@
 
 Ein schwebendes Pixel-Art-Büro, das deine lokalen Orca-Agenten, ihre Worker und ihre Subagenten als Kollegen zeigt. Es lässt sich als Orca-Plugin installieren oder aus einem Klon starten.
 
+![Ein Codex- und ein Antigravity-Worker mit dem Namen ihres Anbieters unter ihrem Claude-Code-Elternagenten](docs/office.png)
+
 ## Was es zeigt
 
 Eine Figur pro Agent, den Orca auf diesem Rechner erkennt. Kinder tragen eine Mütze in der Farbe ihres Teams und gehen mit ihrem Elternagenten.
@@ -85,7 +87,7 @@ Das Fenster schwebt außerhalb von Orca und passt so gut auf einen zweiten Monit
 
 ## Einschränkungen
 
-- Pixtuoid v0.23.0 verknüpft ein Kind nur mit einem Elternagenten desselben Anbieters. Ein Worker eines anderen Anbieters erscheint unter seinem Elternagenten, mit Mütze und dem Anbieter-Label des Elternagenten.
+- Pixtuoid v0.23.0 verknüpft ein Kind nur mit einem Elternagenten desselben Anbieters. Ein Worker eines anderen Anbieters erscheint mit Mütze unter seinem Elternagenten. Unter einem Claude-Code-Elternagenten zeigt er den Namen seines eigenen Anbieters, unter einem Codex- oder OpenCode-Elternagenten dessen Anbieter-Label.
 - Unter einer Antigravity-Sitzung der obersten Ebene kann Pixtuoid keine Kinder zeichnen: Ihre Worker erscheinen als eigene Kollegen in derselben Teamfarbe. Ein Antigravity-Worker, der selbst ein Kind ist, kann Kinder haben.
 - Ein Worker, dessen Elternagent zuerst endet, geht mit ihm und kehrt als eigener Kollege zurück.
 - Es erscheinen nur Subagenten, die Orca selbst beobachtet. Die Hierarchie stammt aus `orca worktree ps`, der einzigen Orca-Schnittstelle, die sie liefert.
@@ -99,7 +101,7 @@ Das Fenster schwebt außerhalb von Orca und passt so gut auf einen zweiten Monit
 
 - Aus `orca agent list` und `orca worktree ps` liest das Büro nur IDs, Eltern-Kind-Verknüpfungen, Anbieter, Agententyp, Zustand und Ordner. Prompts, Antworten und Tool-Eingaben werden nie weitergegeben oder gespeichert.
 - Der einzige Netzwerkzugriff des Adapters ist der Download der festgelegten Pixtuoid-Version von GitHub.
-- App, isoliertes Agentenprofil und Logs bleiben im Klon oder in `%LOCALAPPDATA%\PixtuoidOrca` (`app/`, `perfil/`, `actividad/`).
+- App, isoliertes Agentenprofil und Logs bleiben im Klon oder in `%LOCALAPPDATA%\PixtuoidOrca` (`app/`, `perfil/`, `actividad/`). Um den Anbieter eines Workers zu benennen, schreibt das Büro eine einzeilige Karte (Anbieter und Ordner) ins isolierte Profil und löscht sie, wenn der Worker geht.
 - Globale Agenten- und Orca-Einstellungen werden nicht geändert.
 
 ## Deinstallation

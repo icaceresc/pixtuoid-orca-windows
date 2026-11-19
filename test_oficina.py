@@ -321,12 +321,53 @@ class PluginManifestTests(unittest.TestCase):
     def test_every_command_is_registered_by_the_worker(self):
         worker = (self.root / self.manifest["main"]).read_text(encoding="utf-8")
         for command in self.manifest["contributes"]["commands"]:
-            self.assertIn(f"register('{command['id']}'", worker)
+            self.assertIn(f"logged('{command['id']}'", worker)
 
     def test_worker_keeps_data_out_of_the_plugin_folder(self):
         worker = (self.root / self.manifest["main"]).read_text(encoding="utf-8")
         self.assertIn("PIXTUOID_ORCA_HOME", worker)
         self.assertIn("PYTHONDONTWRITEBYTECODE", worker)
+
+
+class NameCardTests(unittest.TestCase):
+    """Cross-provider children under a Claude Code parent show their real provider."""
+
+    def run_tree(self, parent_kind, child_kind):
+        directory = tempfile.TemporaryDirectory(prefix="tmp-test-", dir=Path(__file__).parent)
+        self.addCleanup(directory.cleanup)
+        names = Path(directory.name)
+        h = Harness()
+        with patch.object(oficina.Agent, "names", names):
+            h.sync([agent("working", SID, parent_kind), agent("working", KID, child_kind)],
+                   [ps_row(SID, children=[]), ps_row(KID, parent=SID, children=[])])
+            cards = list(names.rglob("agent-*.jsonl"))
+        return h, names, cards
+
+    def test_codex_worker_under_claude_gets_a_codex_card(self):
+        h, names, cards = self.run_tree("claude", "codex")
+        self.assertEqual([c.name for c in cards], [f"agent-{KID}.jsonl"])
+        self.assertEqual(cards[0].parent.parent.name, SID, "Card sits under the parent session")
+        line = __import__("json").loads(cards[0].read_text(encoding="utf-8"))
+        self.assertEqual(line["attributionAgent"], "codex")
+        self.assertEqual(set(line), {"type", "attributionAgent", "cwd", "sessionId", "message"},
+                         "No prompt, title or tool data")
+        with patch.object(oficina.Agent, "names", names):
+            h.sync([agent("working", SID, "claude")], [ps_row(SID, children=[])])
+        self.assertFalse(cards[0].exists(), "Card removed when the child leaves")
+
+    def test_same_provider_and_non_claude_parents_get_no_card(self):
+        for parent_kind, child_kind in (("claude", "claude"), ("codex", "claude"), ("opencode2", "codex")):
+            _h, _names, cards = self.run_tree(parent_kind, child_kind)
+            self.assertEqual(cards, [], f"{parent_kind} -> {child_kind}")
+
+    def test_cards_of_a_previous_run_are_cleared(self):
+        with tempfile.TemporaryDirectory(prefix="tmp-test-", dir=Path(__file__).parent) as directory:
+            names = Path(directory) / "names"
+            card = names / SID / "subagents" / f"agent-{KID}.jsonl"
+            card.parent.mkdir(parents=True)
+            card.write_text("{}", encoding="utf-8")
+            oficina.clear_traces(Path(directory) / "codex", names)
+            self.assertFalse(card.exists())
 
 
 if __name__ == "__main__":

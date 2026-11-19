@@ -43,17 +43,28 @@ def office_env(pipe=None):
 def orca_json(orca, *args):
     response = subprocess.run([orca, *args, "--environment", "local", "--json"],
                               stdin=subprocess.DEVNULL, capture_output=True, timeout=10,
-                              creationflags=NO_WINDOW, check=True)
-    answer = json.loads(response.stdout)
-    if not answer.get("ok"):
-        raise RuntimeError("Orca did not return a successful session response")
+                              creationflags=NO_WINDOW)
+    try:
+        answer = json.loads(response.stdout)
+    except ValueError:
+        answer = {}
+    if response.returncode or not answer.get("ok"):
+        # Orca's own error code and message, never the command's data.
+        error = answer.get("error") or {}
+        detail = error.get("code") or response.stderr.decode("utf-8", "replace").strip()[-300:]
+        raise RuntimeError(f"orca {' '.join(args[:2])} failed ({response.returncode}): "
+                           f"{detail} {error.get('message', '')}".strip())
     return answer["result"]
 
-def clear_traces(trace):
+def clear_traces(trace, names=None):
     # Pixtuoid restores Codex sessions from rollout files at startup; the
     # synthetic rollouts of a previous run would come back as ghost coworkers.
     for rollout in trace.rglob("rollout-*.jsonl"):
         rollout.unlink()
+    # The same for the provider name cards of a previous run (see Agent.name_card).
+    if names is not None:
+        for card in names.rglob("agent-*.jsonl"):
+            card.unlink()
 
 def emit(env, source, payload, event=None):
     arguments = [str(SHIM), "--source", source]
@@ -89,6 +100,10 @@ class Agent:
     same source; `provider` keeps the agent's real provider for the log.
     """
 
+    # Folder of Claude Code transcripts Pixtuoid watches in the isolated profile.
+    # None (tests) leaves Pixtuoid's default label.
+    names = None
+
     def __init__(self, key, provider, cwd, trace, parent=None, label=None, owner=None, generation=0):
         self.key = key
         self.provider = provider
@@ -114,6 +129,20 @@ class Agent:
         if self.parent and self.source == "claude-code":
             return "agent-" + self.id
         return self.id
+
+    @property
+    def name_card(self):
+        """A one-line Claude Code subagent transcript naming this child's real provider.
+
+        Pixtuoid reads it as the child's own transcript (same `agent-<id>` key) and
+        relabels it from `attributionAgent`, so a Codex worker under a Claude parent
+        reads "codex" while keeping its place in the tree. Only Claude Code has
+        such a label path in Pixtuoid v0.23.0.
+        """
+        if (self.names is None or not self.parent or self.source != "claude-code"
+                or self.provider == "claude-code"):
+            return None
+        return self.names / self.parent.session / "subagents" / f"agent-{self.id}.jsonl"
 
     def depth(self):
         return 0 if self.parent is None else 1 + self.parent.depth()
@@ -143,6 +172,12 @@ class Agent:
             emit(env, self.source, dict(common, **fields), event)
         if prev is None:
             hook("SubagentStart", agent_type=self.label or "subagent")
+            card = self.name_card
+            if card:
+                card.parent.mkdir(parents=True, exist_ok=True)
+                line = {"type": "assistant", "attributionAgent": self.provider, "cwd": self.cwd,
+                        "sessionId": self.parent.session, "message": {"content": []}}
+                card.write_text(json.dumps(line) + "\n", encoding="utf-8")
         if prev in ACTIVE:
             hook("Stop", turn_id=str(self.turn))
         if state == "working":
@@ -155,6 +190,8 @@ class Agent:
                 hook("Notification", notification_type="permission_prompt", message=f"Orca: {state}")
         elif state == "closed":
             hook("SubagentStop", agent_transcript_path="")
+            if self.name_card:
+                self.name_card.unlink(missing_ok=True)
 
     def _session_hooks(self, env, prev, state):
         source = self.source
@@ -491,7 +528,8 @@ def main():
     pipe = rf"\\.\pipe\pixtuoid-orca-{uuid.uuid4().hex}"
     trace = PROFILE / "codex" / "sessions"
     trace.mkdir(parents=True, exist_ok=True)
-    clear_traces(trace)
+    Agent.names = PROFILE / "claude" / "projects" / "orca-pixtuoid"
+    clear_traces(trace, Agent.names)
     env = office_env(pipe)
     audit = "--evidence" in sys.argv[1:]
     with (RUN / "orca-estados.jsonl").open("w", encoding="utf-8", buffering=1) as log:
