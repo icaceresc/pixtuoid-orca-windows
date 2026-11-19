@@ -11,25 +11,36 @@ import tempfile
 import urllib.request
 import zipfile
 
-from oficina import APP, LAB, PROFILE, SOURCES, office_env, orca_json
+from oficina import APP, HOME, LAB, PROFILE, SOURCES, office_env, orca_json
 
 VERSION = "0.23.0"
 ARCHIVE = f"pixtuoid-v{VERSION}-x86_64-pc-windows-msvc.zip"
 SHA256 = "e52205aba4061112f94f40529d920e0346c98c0f4123edeceebee12e80303dad"
 RELEASE = f"https://github.com/pixtuoid/pixtuoid/releases/download/v{VERSION}/{ARCHIVE}"
 CONFIG = PROFILE / "config" / "pixtuoid" / "config.toml"
+# Marks a data folder this installer made outside a clone, so the plugin may remove it.
+MARKER = HOME / ".pixtuoid-orca-home"
+
+
+def installed_version():
+    """The pinned app's version line, or None when app/ holds no working Pixtuoid."""
+    if not (APP.is_file() and APP.with_name("pixtuoid-hook.exe").is_file()):
+        return None
+    try:
+        return subprocess.check_output([APP, "--version"], text=True, timeout=20).strip()
+    except (OSError, subprocess.SubprocessError):
+        return None
 
 
 def install_release():
-    if APP.is_file() and APP.with_name("pixtuoid-hook.exe").is_file():
-        version = subprocess.check_output([APP, "--version"], text=True).strip()
-        if version == f"pixtuoid {VERSION}":
-            return
-    if APP.parent.exists():
+    current = installed_version()
+    if current == f"pixtuoid {VERSION}":
+        return
+    if APP.parent.exists() and not (current or "").startswith("pixtuoid "):
         raise RuntimeError(f"Hay una instalacion distinta o incompleta en {APP.parent}. Muevela antes de instalar.")
-    with tempfile.TemporaryDirectory(prefix=".instalacion-", dir=LAB) as directory:
+    with tempfile.TemporaryDirectory(prefix=".instalacion-", dir=HOME) as directory:
         staging = Path(directory).resolve()
-        if staging.parent != LAB:
+        if staging.parent != HOME:
             raise RuntimeError("La carpeta temporal quedo fuera del repositorio.")
         archive = staging / ARCHIVE
         with urllib.request.urlopen(RELEASE, timeout=60) as response, archive.open("wb") as out:
@@ -43,6 +54,10 @@ def install_release():
             release.extractall(output)
         if not all((output / name).is_file() for name in ("pixtuoid.exe", "pixtuoid-hook.exe", "LICENSE")):
             raise RuntimeError("La descarga no contiene los binarios y la licencia esperados.")
+        if APP.parent.exists():
+            # Update: the verified release replaces an older Pixtuoid only after
+            # the download passed every check; the old one waits in staging.
+            APP.parent.rename(staging / "previous")
         output.rename(APP.parent)
 
 
@@ -90,6 +105,10 @@ def main():
         command = required_cli[source]
         if shutil.which(command) is None:
             parser.error(f"{source} necesita {command} en PATH para preparar su perfil aislado.")
+    HOME.mkdir(parents=True, exist_ok=True)
+    if HOME != LAB and not MARKER.exists():
+        MARKER.write_text("Pixtuoid for Orca data folder. Safe to delete while the office is closed.\n",
+                          encoding="utf-8")
     install_release()
     env = office_env()
     for key in ("APPDATA", "LOCALAPPDATA", "CLAUDE_CONFIG_DIR", "CODEX_HOME",
@@ -99,7 +118,7 @@ def main():
     CONFIG.parent.mkdir(parents=True, exist_ok=True)
     if not CONFIG.exists():
         CONFIG.write_text(f'last-seen-version = "{VERSION}"\n', encoding="utf-8")
-    connected = subprocess.run([APP, "connect", "--json", *sorted(chosen)], env=env, cwd=LAB,
+    connected = subprocess.run([APP, "connect", "--json", *sorted(chosen)], env=env, cwd=HOME,
                                capture_output=True, encoding="utf-8")
     if connected.returncode:
         raise RuntimeError(connected.stderr.strip() or connected.stdout.strip())
@@ -108,9 +127,13 @@ def main():
     if {row["id"] for row in outcomes} != chosen or failures:
         raise RuntimeError(f"Pixtuoid no preparo todas las fuentes: {failures}")
     (PROFILE / "fuentes.json").write_text(json.dumps(sorted(chosen)) + "\n", encoding="utf-8")
-    shortcut()
     print(f"Fuentes preparadas en el perfil aislado: {', '.join(sorted(chosen))}.")
-    print(f"Abre {LAB / 'Abrir oficina.lnk'} con doble clic.")
+    if HOME == LAB:
+        shortcut()
+        print(f"Abre {LAB / 'Abrir oficina.lnk'} con doble clic.")
+    else:
+        # Orca's plugin folder changes on every update: it opens the office itself.
+        print("Abre la oficina desde Orca: Pixtuoid: Open office window.")
 
 
 if __name__ == "__main__":

@@ -7,20 +7,46 @@
 
 # Pixtuoid for Orca on Windows
 
-A floating pixel-art office that shows your local Orca agent sessions as coworkers.
+A floating pixel-art office that shows your local Orca agents, their workers and their subagents as coworkers. It installs as an Orca plugin or runs from a clone.
 
 ## What it shows
 
-One character per agent session that Orca identifies on this machine: **Claude Code, Codex, OpenCode and Antigravity**. Characters work while their agent runs a turn, rest when it finishes, and leave when the session closes.
+One character per agent that Orca identifies on this machine. Children wear a cap in their team's color and leave with their parent.
+
+| In Orca | In the office |
+|---|---|
+| Agent session (Claude Code, Codex, OpenCode, Antigravity) | Its own character |
+| Worker started through Orca orchestration, at any depth | A child of the agent that dispatched it |
+| Subagent Orca observes inside a session | A child of that session |
+| Background command, monitor or tool call | No character |
+
+Verified with live sessions on Orca 1.4.263:
+
+| Provider | As agent | As worker child | Native subagents |
+|---|---|---|---|
+| Claude Code | Yes | Yes | Yes |
+| Codex | Yes | Yes | Not verified |
+| OpenCode | Yes | Yes | Not verified |
+| Antigravity | Yes | Yes | Orca reports none |
 
 ## Requirements
 
 - Windows x64 with DirectX 12
-- Python 3.11+ (64-bit)
-- Orca running, with at least one supported agent installed
+- Python 3.11+ (64-bit) with the `py` launcher
+- Orca 1.4.263 or later, running, with at least one supported agent installed
 - `claude`, `codex` or `agy` in `PATH` for the Claude Code, Codex or Antigravity sources
 
 ## Quick install
+
+**As an Orca plugin**
+
+```powershell
+orca plugin install icaceresc/pixtuoid-orca-windows
+```
+
+Orca shows what the plugin may do and asks you to approve it: it runs its own code and requests no Orca permissions. Then run **Pixtuoid: Install or update the office app** from the command palette. It downloads Pixtuoid v0.23.0 to `%LOCALAPPDATA%\PixtuoidOrca`, verifies its SHA-256 and connects the agents Orca reports.
+
+**From a clone**
 
 ```powershell
 git clone https://github.com/icaceresc/pixtuoid-orca-windows.git
@@ -29,11 +55,14 @@ py -3 instalar.py
 py -3 -m unittest -v test_oficina
 ```
 
-The installer downloads Pixtuoid v0.23.0, verifies its SHA-256 and connects the agents Orca reports. To limit sources: `py -3 instalar.py --sources claude-code codex`.
+To limit sources: `py -3 instalar.py --sources claude-code codex`.
 
 ## Open the office
 
-Double-click **`Abrir oficina.lnk`** in the clone. Only one office runs at a time. Run `py -3 oficina.py --evidence` to log states to `actividad/`.
+- Plugin: **Pixtuoid: Open office window** and **Pixtuoid: Close office window** in the command palette.
+- Clone: double-click **`Abrir oficina.lnk`**. Close it with `Q`, or run `py -3 oficina.py --stop`.
+
+The window floats outside Orca, so you can keep it on a second monitor. Only one office runs per installation. `py -3 oficina.py --evidence` logs states to `actividad/`.
 
 ## Controls
 
@@ -43,7 +72,7 @@ Double-click **`Abrir oficina.lnk`** in the clone. Only one office runs at a tim
 | Resize | Drag the bottom-right corner |
 | Zoom | `Ctrl` `+` / `Ctrl` `-` / `Ctrl` `0` |
 | Help · Pause · Theme | `?` · `P` · `T` |
-| Close and save size and position | `Q` |
+| Close and save size and position | `Q`, or the close command |
 
 ## Visible states
 
@@ -51,28 +80,33 @@ Double-click **`Abrir oficina.lnk`** in the clone. Only one office runs at a tim
 |---|---|
 | `working` | Character at the desk, active |
 | `waiting` / `blocked` | Character asking for permission |
-| `done` | Character resting |
-| Session closed | Character leaves |
+| `done` / `idle` | Character resting |
+| Session closed, subagent finished or cancelled | Character leaves; its children leave first |
 
 ## Limitations
 
-- Main agent sessions only. Subagents have no character of their own.
-- Sessions already finished when the office opens are not shown.
+- Pixtuoid v0.23.0 links a child only to a parent of the same provider. A worker of another provider is drawn under its parent, with the cap and the parent's provider label.
+- Pixtuoid cannot draw children under Antigravity. Workers that Antigravity dispatches appear as separate coworkers in the same team color.
+- Only subagents that Orca itself observes appear. The hierarchy comes from `orca worktree ps`, the only Orca interface that exposes it.
+- Agents already finished when the office opens are not shown.
 - States mirror Orca's turn state, not tools, tokens or reasoning.
-- Orca is polled about every 2 seconds, so very short turns may be missed.
+- Orca is polled about every 1.25 seconds, so very short turns may be missed. While Orca is busy, a new child may appear for a moment before it moves under its parent.
 - `waiting` / `blocked` have not been verified with live sessions yet.
 - Local Orca host only. Remote Orca environments are ignored.
 
 ## Privacy
 
-- From `orca agent list` the office uses only the session ID, provider, state and folder. Prompts and replies are never forwarded or stored.
-- The adapter's only network access is the installer's download of the pinned release from GitHub.
-- The app, the isolated agent profile and the logs stay inside the clone (`app/`, `perfil/`, `actividad/`). Git ignores them.
+- The office reads only IDs, parent links, provider, agent type, state and folder from `orca agent list` and `orca worktree ps`. Prompts, replies and tool inputs are never forwarded or stored.
+- The adapter's only network access is the download of the pinned Pixtuoid release from GitHub.
+- The app, the isolated agent profile and the logs stay in the clone or in `%LOCALAPPDATA%\PixtuoidOrca` (`app/`, `perfil/`, `actividad/`).
 - Global agent and Orca settings are not modified.
 
 ## Uninstall
 
-Close the office with `Q` and delete the clone folder. Nothing is installed outside it.
+- Plugin: run **Pixtuoid: Remove downloaded app and local data**, then uninstall the plugin in Orca under Settings → Plugins.
+- Clone: close the office and delete the clone folder.
+
+Nothing else is installed.
 
 ## Credits and license
 
