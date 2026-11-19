@@ -147,15 +147,14 @@ def sync(orca, env, trace, sessions, paths, record, configured):
     if snapshot.get("truncated"):
         raise RuntimeError("Orca returned a truncated session list")
     rows = {row["orcaSessionId"]: row for row in snapshot["agents"]
-            if SOURCES.get(row.get("agent")) in configured and row.get("state") in ACTIVE | {"done"}}
+            if isinstance(row.get("orcaSessionId"), str) and row["orcaSessionId"]
+            and SOURCES.get(row.get("agent")) in configured and row.get("state") in ACTIVE | {"done"}}
     for sid, row in rows.items():
         state = row["state"]
+        # A completed session predating this monitor is not a live coworker.
+        # Avoid querying agent show for every old idle pane on every poll.
         if state == "done" and sid not in sessions:
-            if sid in paths:
-                continue
-            if not orca_json(orca, "agent", "show", sid)["places"]:
-                paths[sid] = None
-                continue
+            continue
         if sid not in sessions:
             worktree = row.get("worktreeId")
             if worktree and worktree not in paths:
