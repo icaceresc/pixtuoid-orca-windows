@@ -5,7 +5,7 @@ every native Pixtuoid feature fed wherever Orca supplies the data, no PC freeze 
 and current with both upstreams plus an automatic Pixtuoid release check. Launch stays from the
 clone; the Orca plugin is paused (not extended, still valid).
 
-status: active
+status: completed
 commits: authorized
 branch: feat/jp-pix-001-orca-adaptation (one PR to main; merge, tag and release stay with the Human)
 delegation: Workers chosen by routing (any provider, model, effort) for research and independent review; temporary test agents in Orca, closed by their own handle.
@@ -89,4 +89,15 @@ with the compare link. Allowing Actions to open pull requests is a repository se
 - [x] READMEs EN/ES/DE/JA rewritten together; structure parity checked by script
 - [x] Live validation in Orca: the dispatching orchestrator, this Claude worker, Codex and Antigravity test workers, native Explore subagent; OpenCode test agent stopped by its usage limit
 - [x] Independent review of the final diff by another Worker (Codex, high effort): no blocker; fixed both medium findings (PR and dry runs now run in a read-only job; a subagent's `name` never stands in for its type) and the low one (placeholder used only when the kill-on-close job holds it, else none); 58 tests pass
-- [ ] Push, PR to main, CI green (including the release workflow's dry run)
+- [x] Push, PR to main, CI green (including the release workflow's dry run): https://github.com/icaceresc/pixtuoid-orca-windows/pull/7; unit (58 tests) and read-only dry-run jobs pass, release job skipped on pull requests; mergeable
+
+Pending Human actions, outside this mission's DONE:
+- Review and merge PR #7 (merge, tag and release are the Human's decisions).
+- Optional: allow GitHub Actions to create pull requests (Settings, Actions, General) so the
+  release check opens a pull request instead of an issue with the compare link.
+- Decide whether issue #5 closes with this change (provider now in the child's name; the prefix
+  and badge color cannot change without modifying Pixtuoid).
+- Check OpenCode live on Orca 1.4.266 once its usage limit allows; it is covered by unit tests
+  and the real Pixtuoid harness.
+- From the previous mission: verify the orca.dev listing page from another workstation when the
+  plugin is resumed.
