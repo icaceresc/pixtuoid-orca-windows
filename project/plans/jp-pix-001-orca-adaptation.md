@@ -41,7 +41,7 @@ No model, effort, token usage or agent process id anywhere in `ps`, `agent list`
 No streaming/watch command exists in the CLI.
 
 Pixtuoid v0.23.0 (source read at the tag; inventory by a Worker, key points re-verified):
-names are `<source prefix>·<cwd basename>`; `agent_type` is never shown; only Claude Code has a
+names are the source prefix, a middle dot and the cwd basename; `agent_type` is never shown; only Claude Code has a
 relabel path (`attributionAgent`); Codex children showed no work (their PreToolUse is pending
 only); Antigravity has no end hook (only the `_pid` exit watch); a silent agent is swept after
 5 to 60 min while Orca may still list it; focus-on-click works on Windows only for Antigravity.
@@ -52,7 +52,7 @@ Feature matrix (W works, L works with limitation, X impossible: Orca does not ex
 |---|---|---|
 | One character per agent, 4 providers | W | live 1.4.266 (Claude Code, Codex, Antigravity); harness all 4; OpenCode live blocked by its usage limit |
 | Parent link, team cap, `Tab` tree, "under" tooltip | L | live + dashboard capture; Antigravity cannot parent (Pixtuoid) -> `worker of antigravity` |
-| Provider, role, project in the name | L | live labels (`cc·<workspace> · orchestrator`, `cx·worker · jp-pix-001`, `ag·worker · ...`, `cc·Explore subagent · ...`); desk badge shows ~10 chars; role fixed at first sight |
+| Provider, role, project in the name | L | live labels (`cc·WORKSPACE · orchestrator`, `cx·worker · jp-pix-001`, `ag·worker · ...`, `cc·Explore subagent · ...`); desk badge shows ~10 chars; role fixed at first sight |
 | Issue #5: provider of a cross-provider child in Codex/OpenCode trees | L | harness: `cx·claude worker · api`, `oc·claude worker · ...`; prefix and badge color stay the parent's (Pixtuoid has no relabel path for codex/opencode) |
 | Working at the desk (incl. Codex children) | W | harness `cx·worker · web-app` running; live |
 | Tool name on monitor, tooltip, footer tally, call counter | L | live `running(Bash)`, `running(shell)`, `running(execute)`; subagents get no tool name from Orca; tools shorter than a poll are missed |
