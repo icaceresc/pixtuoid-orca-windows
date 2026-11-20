@@ -88,5 +88,5 @@ with the compare link. Allowing Actions to open pull requests is a repository se
 - [x] Updates: pin verified against GitHub's digest; Orca 1.4.266 verified live; release workflow and bump script with fixture tests; Orca version notice
 - [x] READMEs EN/ES/DE/JA rewritten together; structure parity checked by script
 - [x] Live validation in Orca: the dispatching orchestrator, this Claude worker, Codex and Antigravity test workers, native Explore subagent; OpenCode test agent stopped by its usage limit
-- [ ] Independent review of the final diff by another Worker; findings answered
+- [x] Independent review of the final diff by another Worker (Codex, high effort): no blocker; fixed both medium findings (PR and dry runs now run in a read-only job; a subagent's `name` never stands in for its type) and the low one (placeholder used only when the kill-on-close job holds it, else none); 58 tests pass
 - [ ] Push, PR to main, CI green (including the release workflow's dry run)

@@ -1,4 +1,5 @@
 """Regression tests for the read-only Orca projection (no Orca or Pixtuoid required)."""
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -571,6 +572,34 @@ class FeatureTests(unittest.TestCase):
             h.sync([agent("working", KID, "antigravity")])
         self.assertTrue(FakePlaceholder.made[0].ended)
         self.assertFalse(FakePlaceholder.made[1].ended)
+
+    def test_subagent_name_never_stands_in_for_its_type(self):
+        h = Harness()
+        agents = h.sync([agent("working", SID, "claude")],
+                        [ps_row(SID, children=[child(SUB, agentType=None, name="private title")])])
+        self.assertEqual(oficina.ntpath.basename(agents["child:" + SUB].cwd), "subagent · work")
+        self.assertNotIn("private", repr(h.hooks))
+
+    def test_antigravity_without_a_placeholder_still_shows(self):
+        h = Harness()
+        with patch.object(oficina, "placeholder", side_effect=OSError("no job")):
+            with (patch.object(oficina, "orca_json", side_effect=h.orca_json),
+                  patch.object(oficina, "emit", side_effect=h.emit),
+                  patch.object(oficina.Agent, "codex_record")):
+                h.agents, h.ps = [agent("working", SID, "antigravity")], None
+                h.office.sync()
+        self.assertIsNone(h.office.agents[SID].placeholder)
+        self.assertEqual({p["_pid"] for s, e, p in h.hooks}, {oficina.os.getpid()})
+
+    @unittest.skipUnless(sys.platform == "win32", "Windows job objects")
+    def test_placeholder_is_a_suspended_process_held_by_a_kill_on_close_job(self):
+        with patch.object(oficina, "SHIM", Path(sys.executable)):
+            held = oficina.Placeholder()
+        try:
+            self.assertIsNone(held.process.poll(), "Suspended, not exited")
+        finally:
+            held.end()
+        self.assertIsNotNone(held.process.poll())
 
     def test_older_orca_without_provider_in_ps_reads_agent_list(self):
         h = Harness()

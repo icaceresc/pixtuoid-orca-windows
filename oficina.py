@@ -150,18 +150,24 @@ class Placeholder:
     job = None
 
     def __init__(self):
+        """Raises OSError, leaving nothing behind, when the job cannot hold the placeholder."""
         if Placeholder.job is None:
             Placeholder.job = kill_on_close_job()
+        if not Placeholder.job:
+            raise OSError("no kill-on-close job for Antigravity placeholders")
         self.process = subprocess.Popen([str(SHIM), "--version"], stdin=subprocess.DEVNULL,
                                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                                         creationflags=NO_WINDOW | 0x00000004)  # CREATE_SUSPENDED
-        if Placeholder.job:
-            kernel = ctypes.windll.kernel32
-            kernel.OpenProcess.restype = ctypes.c_void_p
-            handle = kernel.OpenProcess(0x0101, False, self.process.pid)  # SET_QUOTA | TERMINATE
-            if handle:
-                kernel.AssignProcessToJobObject(ctypes.c_void_p(Placeholder.job), ctypes.c_void_p(handle))
-                kernel.CloseHandle(ctypes.c_void_p(handle))
+        kernel = ctypes.windll.kernel32
+        kernel.OpenProcess.restype = ctypes.c_void_p
+        handle = kernel.OpenProcess(0x0101, False, self.process.pid)  # SET_QUOTA | TERMINATE
+        held = bool(handle) and bool(kernel.AssignProcessToJobObject(ctypes.c_void_p(Placeholder.job),
+                                                                      ctypes.c_void_p(handle)))
+        if handle:
+            kernel.CloseHandle(ctypes.c_void_p(handle))
+        if not held:
+            self.end()
+            raise OSError("the placeholder could not join the kill-on-close job")
         self.pid = self.process.pid
 
     def end(self):
@@ -184,7 +190,9 @@ def kill_on_close_job():
                     ("f", ctypes.c_size_t), ("g", ctypes.c_uint32), ("h", ctypes.c_uint32),
                     ("io", ctypes.c_uint64 * 6), ("i", ctypes.c_size_t * 4)]
     limits = Limits(flags=0x2000)  # JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
-    kernel.SetInformationJobObject(ctypes.c_void_p(job), 9, ctypes.byref(limits), ctypes.sizeof(limits))
+    if not kernel.SetInformationJobObject(ctypes.c_void_p(job), 9, ctypes.byref(limits), ctypes.sizeof(limits)):
+        kernel.CloseHandle(ctypes.c_void_p(job))
+        return None
     return job
 
 
@@ -423,7 +431,11 @@ class Agent:
                     self.placeholder.end()
                 return
             if prev is None:
-                self.placeholder = placeholder()
+                try:
+                    self.placeholder = placeholder()
+                except (OSError, subprocess.SubprocessError):
+                    # Without one it still shows; Pixtuoid's sweep then ends it, as before.
+                    self.placeholder = None
                 self._ag(env, "SessionStart")
             if prev in ACTIVE and not repeat:
                 self._ag(env, "Stop")
@@ -497,7 +509,8 @@ def child_rows(row):
                 state = "closed"
             else:
                 state = CHILD_STATES.get(child.get("state"))
-            out["child:" + child["id"]] = (state, child.get("agentType") or child.get("name"))
+            # The subagent's type only: a child's `name` or description may be user text.
+            out["child:" + child["id"]] = (state, child.get("agentType"))
         return out
     if isinstance(row.get("subagents"), list):
         return {"child:" + child["id"]: (CHILD_STATES.get(child.get("state")), child.get("agentType"))

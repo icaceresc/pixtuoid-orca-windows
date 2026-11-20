@@ -21,19 +21,34 @@ permissions:
   contents: read
 
 concurrency:
-  group: pixtuoid-release-check
+  group: pixtuoid-release-check-${{ github.event_name }}
   cancel-in-progress: false
 
 jobs:
-  check:
+  # Pull requests and manual dry runs: read-only token, nothing is written or pushed.
+  dry-run:
+    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.dry_run)
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Look for a newer stable Pixtuoid release (dry run)
+        run: python -B .github/scripts/bump_pixtuoid.py --dry-run
+
+  # The daily schedule, or a manual run with dry_run off: only code already on the default branch.
+  release:
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && !inputs.dry_run)
     runs-on: windows-latest
     permissions:
       contents: write
       pull-requests: write
       issues: write
-    env:
-      # A pull request only proves the check; a manual run is a dry run unless asked otherwise.
-      DRY_RUN: ${{ github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -41,15 +56,7 @@ jobs:
           python-version: '3.11'
       - name: Look for a newer stable Pixtuoid release
         id: release
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          if [ "$DRY_RUN" = "true" ]; then
-            python -B .github/scripts/bump_pixtuoid.py --dry-run
-          else
-            python -B .github/scripts/bump_pixtuoid.py
-          fi
+        run: python -B .github/scripts/bump_pixtuoid.py
       - name: Run the tests on the new pin
         if: steps.release.outputs.updated == 'true'
         run: python -B -m unittest -v test_oficina
