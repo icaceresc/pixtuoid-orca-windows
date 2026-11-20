@@ -4,7 +4,7 @@ Objective: install Pixtuoid as an Orca community plugin (open/close the independ
 window from Orca commands, safe install/update/uninstall) and show real nested agents
 (Orca orchestration workers and provider subagents) as their own characters.
 
-status: active
+status: completed
 commits: authorized
 branch: feat/orca-plugin-subagents (merged as 55edb64; release v2.0.0)
 delegation: Workers for API research and independent review are authorized when they add net value.
@@ -39,7 +39,12 @@ publication: authorized by the Human (merge PR #4, tag v2.0.0, `orca-plugin` top
 - [x] Merge PR #4 after CI passes on the final commit: squash-merged as 55edb64 after CI success on 959a0fe
 - [x] Tag v2.0.0 and add the `orca-plugin` topic: annotated tag v2.0.0 -> 55edb64 pushed; topic set; `gh search repos --topic orca-plugin` lists the repo
 - [x] Sync local main; replace the development load with the published plugin; reopen the office: main == origin/main at 55edb64; `orca plugin install icaceresc/pixtuoid-orca-windows` resolved v2.0.0 (55edb64, 0 capabilities); dev folder unloaded; Open from the palette started the office from the published plugin and it read Orca
-- [ ] Verify the listing page https://orca.dev/plugins/icaceresc/pixtuoid-orca-windows: blocked on this machine, because Kaspersky Endpoint Security re-signs TLS with a local CA certificate that expired on 2025-12-31 (curl: SEC_E_CERT_EXPIRED); TLS verification is not bypassed. Next: open the page from a device or network without that interception, or once IT renews the Kaspersky root, and record what it shows
+
+Pending Human action, outside this mission's DONE: verify the listing page
+https://orca.dev/plugins/icaceresc/pixtuoid-orca-windows from another workstation (this one cannot:
+Kaspersky Endpoint Security re-signs TLS with a local CA certificate that expired on 2025-12-31,
+curl SEC_E_CERT_EXPIRED; TLS verification is not bypassed), when the plugin is resumed. The plugin
+is paused from 2026-11-20 (mission JP-PIX-001); launch is from the clone.
 
 Not live-verified: native (non-orchestration) subagents of Codex and OpenCode; a top-level
 Antigravity session as parent (covered by unit tests only).

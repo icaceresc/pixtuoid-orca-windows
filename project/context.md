@@ -1,3 +1,3 @@
 # Project context
 
-active_plan: project/plans/pixtuoid-2-orca-plugin-subagents.md
+active_plan: project/plans/jp-pix-001-orca-adaptation.md

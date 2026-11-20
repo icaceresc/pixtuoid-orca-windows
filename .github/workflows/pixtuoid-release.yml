@@ -1,0 +1,85 @@
+name: Pixtuoid release check
+
+# Looks for a new stable Pixtuoid release every day. When there is one, it verifies the
+# archive against the SHA-256 GitHub publishes, bumps instalar.py, runs the tests and
+# opens a pull request for review. It never merges, and never follows unreleased `main`.
+on:
+  schedule:
+    - cron: '23 7 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Only report what would change
+        type: boolean
+        default: true
+  pull_request:
+    paths:
+      - .github/workflows/pixtuoid-release.yml
+      - .github/scripts/bump_pixtuoid.py
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pixtuoid-release-check
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    env:
+      # A pull request only proves the check; a manual run is a dry run unless asked otherwise.
+      DRY_RUN: ${{ github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Look for a newer stable Pixtuoid release
+        id: release
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          if [ "$DRY_RUN" = "true" ]; then
+            python -B .github/scripts/bump_pixtuoid.py --dry-run
+          else
+            python -B .github/scripts/bump_pixtuoid.py
+          fi
+      - name: Run the tests on the new pin
+        if: steps.release.outputs.updated == 'true'
+        run: python -B -m unittest -v test_oficina
+      - name: Open a pull request (never merged automatically)
+        if: steps.release.outputs.updated == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          branch="automation/pixtuoid-v$VERSION"
+          title="Update Pixtuoid to v$VERSION"
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null; then
+            echo "$branch already exists; nothing new to propose."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git add instalar.py
+          git commit -m "$title" -m "Pinned archive verified against the SHA-256 GitHub publishes for the release."
+          git push origin "$branch"
+          body="Pixtuoid v$VERSION is the latest stable release. The workflow verified the Windows x64 archive against the SHA-256 GitHub publishes for it and ran the unit tests on the new pin.
+
+          Before merging: run \`py -3 instalar.py\` and open the office once with your Orca agents, and check the [release notes](https://github.com/pixtuoid/pixtuoid/releases/tag/v$VERSION). Pull requests opened by this workflow do not trigger CI by themselves."
+          if ! gh pr create --base main --head "$branch" --title "$title" --body "$body"; then
+            # Repositories that do not let Actions open pull requests get an issue with the link instead.
+            if [ -z "$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[].number')" ]; then
+              gh issue create --title "$title" --body "$body
+
+          Open the pull request: https://github.com/$GITHUB_REPOSITORY/compare/main...$branch?expand=1"
+            fi
+          fi
