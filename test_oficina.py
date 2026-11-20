@@ -1,4 +1,5 @@
 """Regression tests for the read-only Orca projection (no Orca or Pixtuoid required)."""
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -32,15 +33,28 @@ def child(child_id, state="working", kind="agent", membership="live", **extra):
                  "agentType": "general-purpose"}, **extra)
 
 
+class FakePlaceholder:
+    """Stands in for the suspended process an Antigravity coworker's pid comes from."""
+    made = []
+
+    def __init__(self):
+        self.pid, self.ended = 4242 + len(FakePlaceholder.made), False
+        FakePlaceholder.made.append(self)
+
+    def end(self):
+        self.ended = True
+
+
 class Harness:
     """Drives Office.sync against canned Orca answers and records every hook sent."""
 
     def __init__(self, configured=("codex", "claude-code", "opencode", "antigravity")):
         self.hooks = []
+        self.rollouts = []
         self.queries = []
         self.records = []
         self.agents, self.ps, self.truncated = [], None, False
-        self.ps_error = None
+        self.ps_error, self.ps_truncated = None, False
         self.office = oficina.Office("orca.exe", {}, Path("."), self.record, set(configured))
 
     def record(self, *event):
@@ -53,19 +67,37 @@ class Harness:
         if args == ("worktree", "ps"):
             if self.ps_error:
                 raise self.ps_error
-            return {"worktrees": [{"worktreeId": "repo::C:\\work", "path": "C:\\work",
-                                   "agents": self.ps or []}]}
+            return {"worktrees": self.worktrees(), "truncated": self.ps_truncated}
         raise AssertionError(f"Unexpected Orca command: {args}")
+
+    def worktrees(self):
+        """Orca's `worktree ps` answer: each listed agent in its worktree, with its provider
+        and state as `agent list` reports them, plus the hierarchy fields of the matching
+        `ps_row` (none means Orca cannot vouch for its subagents)."""
+        extra = {row["orcaSessionId"]: row for row in self.ps or []}
+        groups = {}
+        for row in self.agents:
+            sid = row.get("orcaSessionId")
+            worktree = row.get("worktreeId") or "repo::C:\\work"
+            listed = dict(extra.get(sid) or {"orcaSessionId": sid}, agentType=row.get("agent"),
+                          state=row.get("state"))
+            groups.setdefault(worktree, []).append(listed)
+        return [{"worktreeId": worktree, "path": worktree.partition("::")[2], "agents": rows}
+                for worktree, rows in groups.items()]
 
     def emit(self, _env, source, payload, event=None):
         self.hooks.append((source, event or payload.get("type"), payload))
+
+    def rollout(self, coworker, kind, payload):
+        self.rollouts.append((coworker.key, kind, payload))
 
     def sync(self, agents, ps=None):
         self.agents, self.ps = agents, ps
         self.hooks.clear()
         with (patch.object(oficina, "orca_json", side_effect=self.orca_json),
               patch.object(oficina, "emit", side_effect=self.emit),
-              patch.object(oficina.Agent, "codex_record")):
+              patch.object(oficina, "placeholder", FakePlaceholder),
+              patch.object(oficina.Agent, "codex_record", autospec=True, side_effect=self.rollout)):
             self.office.sync()
         return self.office.agents
 
@@ -124,10 +156,31 @@ class SessionTests(unittest.TestCase):
     def test_truncated_list_is_not_misread_as_agents_exiting(self):
         h = Harness()
         h.sync([agent("working")])
-        h.truncated = True
+        h.ps_truncated = h.truncated = True
         with self.assertRaisesRegex(RuntimeError, "truncated"):
             h.sync([])
         self.assertIn(SID, h.office.agents)
+
+    def test_one_orca_call_per_cycle(self):
+        h = Harness()
+        h.sync([agent("working", SID, "claude")], [ps_row(SID, children=[child(SUB)])])
+        self.assertEqual(h.queries, [("worktree", "ps")], "agent list is not needed when ps is complete")
+        self.assertEqual(set(h.office.agents), {SID, "child:" + SUB})
+
+    def test_truncated_ps_falls_back_to_agent_list(self):
+        h = Harness()
+        h.ps_truncated = True
+        agents = h.sync([agent("working", SID, "claude"), agent("working", KID, "codex")],
+                        [ps_row(SID, children=[]), ps_row(KID, parent=SID, children=[])])
+        self.assertEqual(h.queries, [("worktree", "ps"), ("agent", "list")])
+        self.assertIs(agents[KID].parent, agents[SID])
+
+    def test_poll_wait_follows_the_cost_of_a_read(self):
+        self.assertEqual(oficina.poll_wait(0.2), oficina.POLL_SECONDS)
+        self.assertEqual(oficina.poll_wait(2.5), 5.0)
+        self.assertEqual(oficina.poll_wait(30), oficina.MAX_POLL_SECONDS)
+        self.assertEqual(oficina.poll_wait(0.1, failed=True), 3.0)
+        self.assertEqual(oficina.poll_wait(30, failed=True), oficina.MAX_POLL_SECONDS)
 
 
 class HierarchyTests(unittest.TestCase):
@@ -177,7 +230,8 @@ class HierarchyTests(unittest.TestCase):
         h.sync(rows, [ps_row(SID, children=[child(SUB, "done", membership="settled",
                                                   outcome="succeeded"), child(SUB2)])])
         self.assertEqual(set(h.office.agents), {SID, "child:" + SUB2})
-        self.assertEqual(h.events(), ["Stop", "SubagentStop"], "Only that child ends its turn and leaves")
+        self.assertEqual(h.events(), ["PostToolUse", "Stop", "SubagentStop"],
+                         "Only that child ends its call and turn, and leaves")
 
     def test_vanished_hook_roster_subagent_closes(self):
         h = Harness()
@@ -224,7 +278,8 @@ class HierarchyTests(unittest.TestCase):
                [ps_row(SID, children=[]), ps_row(KID, parent=SID, children=[])])
         h.sync([agent("working", SID, "claude")], [ps_row(SID, children=[])])
         self.assertEqual(set(h.office.agents), {SID})
-        self.assertEqual(h.events(), ["Stop", "SubagentStop"], "Only that child ends its turn and leaves")
+        self.assertEqual(h.events(), ["PostToolUse", "Stop", "SubagentStop"],
+                         "Only that child ends its call and turn, and leaves")
 
     def test_opencode_child_names_its_parent_once(self):
         h = Harness()
@@ -365,7 +420,7 @@ class NameCardTests(unittest.TestCase):
         self.assertEqual([c.name for c in cards], [f"agent-{KID}.jsonl"])
         self.assertEqual(cards[0].parent.parent.name, SID, "Card sits under the parent session")
         line = __import__("json").loads(cards[0].read_text(encoding="utf-8"))
-        self.assertEqual(line["attributionAgent"], "codex")
+        self.assertEqual(line["attributionAgent"], "cx·worker · work")
         self.assertEqual(set(line), {"type", "attributionAgent", "cwd", "sessionId", "message"},
                          "No prompt, title or tool data")
         with patch.object(oficina.Agent, "names", names):
@@ -401,6 +456,230 @@ class NameCardTests(unittest.TestCase):
             card.write_text("{}", encoding="utf-8")
             oficina.clear_traces(Path(directory) / "codex", names)
             self.assertFalse(card.exists())
+
+
+class IdentificationTests(unittest.TestCase):
+    """Pixtuoid names a coworker `<prefix>·<cwd basename>`: the basename carries project and role."""
+
+    def tree(self, parent_kind, child_kind):
+        h = Harness()
+        agents = h.sync([agent("working", SID, parent_kind), agent("working", KID, child_kind)],
+                        [ps_row(SID, children=[child(SUB, agentType="Explore")]),
+                         ps_row(KID, parent=SID, children=[])])
+        return h, agents
+
+    def basename(self, coworker):
+        return oficina.ntpath.basename(coworker.cwd)
+
+    def test_top_level_agent_keeps_its_real_folder(self):
+        h = Harness()
+        agents = h.sync([agent("working", SID, "claude", worktreeId="repo::C:\\work\\my-repo")])
+        self.assertEqual(agents[SID].cwd, "C:\\work\\my-repo")
+        self.assertEqual(h.hooks[0][2]["cwd"], "C:\\work\\my-repo")
+
+    def test_roles_and_project_in_every_label(self):
+        _h, agents = self.tree("claude", "claude")
+        self.assertEqual(self.basename(agents[SID]), "work · orchestrator")
+        self.assertEqual(self.basename(agents[KID]), "worker · work")
+        self.assertEqual(self.basename(agents["child:" + SUB]), "Explore subagent · work")
+        self.assertEqual(oficina.ntpath.dirname(agents[KID].cwd), "C:\\", "Real parent folder")
+
+    def test_issue_5_cross_provider_child_names_its_provider_in_codex_and_opencode_trees(self):
+        for parent_kind, child_kind, expected in (("codex", "claude", "claude worker · work"),
+                                                  ("opencode2", "claude", "claude worker · work"),
+                                                  ("opencode", "codex", "codex worker · work")):
+            h, agents = self.tree(parent_kind, child_kind)
+            self.assertEqual(self.basename(agents[KID]), expected)
+            sent = [p for s, e, p in h.hooks if p.get("agent_id") == KID or
+                    p.get("data", {}).get("sessionID") == KID]
+            directory = sent[0].get("cwd") or sent[0]["data"]["location"]["directory"]
+            self.assertTrue(directory.endswith(expected), directory)
+
+    def test_worker_of_antigravity_names_its_dispatcher(self):
+        with patch.object(oficina, "placeholder", FakePlaceholder):
+            _h, agents = self.tree("antigravity", "codex")
+        self.assertEqual(self.basename(agents[KID]), "worker of antigravity · work")
+
+    def test_label_text_is_path_safe(self):
+        self.assertEqual(oficina.clean_text('a/b\\c:*?"<>|d\n'), "a b c d")
+        self.assertEqual(oficina.tool_label("Agent"), "Orca: Agent")
+        self.assertEqual(oficina.tool_label("ask_question"), "Orca: ask_question")
+        self.assertIsNone(oficina.tool_label(None))
+
+
+class FeatureTests(unittest.TestCase):
+    def test_real_tool_name_without_its_input(self):
+        h = Harness()
+        secret = "rm -rf C:/private"
+        row = ps_row(SID, children=[], toolName="Bash", toolInput=secret, prompt=secret,
+                     lastAssistantMessage=secret, taskTitle=secret, conversationName=secret)
+        h.sync([agent("working", SID, "claude")], [row])
+        start = next(p for s, e, p in h.hooks if e == "PreToolUse")
+        self.assertEqual((start["tool_name"], start["tool_input"]), ("Bash", {}))
+        h.sync([agent("working", SID, "claude")], [dict(row, toolName="Edit")])
+        self.assertEqual(h.events(), ["PostToolUse", "PreToolUse"])
+        self.assertEqual(h.hooks[-1][2]["tool_name"], "Edit")
+        everything = repr(h.hooks) + repr(h.records)
+        self.assertNotIn("private", everything, "Prompts, replies and tool inputs never leave Orca")
+
+    def test_every_source_shows_the_tool(self):
+        for kind, check in (("codex", None), ("opencode2", "session.tool.input.started"),
+                            ("antigravity", "PreToolUse")):
+            h = Harness()
+            h.sync([agent("working", SID, kind)], [ps_row(SID, children=[], toolName="Read")])
+            calls = [(record, payload) for _key, record, payload in h.rollouts]
+            if check:
+                payload = next(p for s, e, p in h.hooks if e == check)
+                self.assertIn("Read", repr(payload))
+            else:
+                self.assertIn(("response_item", {"type": "function_call", "name": "Read",
+                                                  "call_id": h.office.agents[SID].call,
+                                                  "arguments": "{}"}), calls)
+
+    def test_codex_child_gets_its_own_rollout_with_its_parent(self):
+        h = Harness()
+        h.sync([agent("working", SID, "codex"), agent("working", KID, "codex")],
+               [ps_row(SID, children=[]), ps_row(KID, parent=SID, children=[])])
+        records = h.rollouts
+        meta = next(r for key, kind, r in records if key == KID and kind == "session_meta")
+        self.assertEqual(meta["parent_thread_id"], SID)
+        self.assertIn((KID, "event_msg", {"type": "task_started", "turn_id": "1"}), records,
+                      "A Codex child shows working through its own turn")
+
+    def test_heartbeat_repeats_the_state_with_the_same_ids(self):
+        h = Harness()
+        rows = [agent("working", SID, "claude")]
+        h.sync(rows, [ps_row(SID, children=[], toolName="Bash")])
+        first = next(p for s, e, p in h.hooks if e == "PreToolUse")
+        h.sync(rows, [ps_row(SID, children=[], toolName="Bash")])
+        self.assertEqual(h.events(), [], "Nothing before the heartbeat is due")
+        h.office.agents[SID].sent_at -= oficina.HEARTBEAT_SECONDS + 1
+        h.sync(rows, [ps_row(SID, children=[], toolName="Bash")])
+        self.assertEqual(h.events(), ["PreToolUse"])
+        self.assertEqual(h.hooks[0][2]["tool_use_id"], first["tool_use_id"], "Counted once by Pixtuoid")
+        h.sync([agent("done", SID, "claude")], [ps_row(SID, children=[])])
+        h.office.agents[SID].sent_at -= oficina.HEARTBEAT_SECONDS + 1
+        h.sync([agent("done", SID, "claude")], [ps_row(SID, children=[])])
+        self.assertEqual(h.events(), ["Stop"], "An idle coworker is refreshed by a turn end")
+
+    def test_antigravity_leaves_when_its_placeholder_ends(self):
+        FakePlaceholder.made.clear()
+        h = Harness()
+        with patch.object(oficina, "placeholder", FakePlaceholder):
+            h.sync([agent("working", SID, "antigravity"), agent("working", KID, "antigravity")])
+            pids = {p["_pid"] for s, e, p in h.hooks if p.get("conversationId") == SID}
+            self.assertEqual(pids, {FakePlaceholder.made[0].pid}, "Its own pid on every hook")
+            h.sync([agent("working", KID, "antigravity")])
+        self.assertTrue(FakePlaceholder.made[0].ended)
+        self.assertFalse(FakePlaceholder.made[1].ended)
+
+    def test_subagent_name_never_stands_in_for_its_type(self):
+        h = Harness()
+        agents = h.sync([agent("working", SID, "claude")],
+                        [ps_row(SID, children=[child(SUB, agentType=None, name="private title")])])
+        self.assertEqual(oficina.ntpath.basename(agents["child:" + SUB].cwd), "subagent · work")
+        self.assertNotIn("private", repr(h.hooks))
+
+    def test_antigravity_without_a_placeholder_still_shows(self):
+        h = Harness()
+        with patch.object(oficina, "placeholder", side_effect=OSError("no job")):
+            with (patch.object(oficina, "orca_json", side_effect=h.orca_json),
+                  patch.object(oficina, "emit", side_effect=h.emit),
+                  patch.object(oficina.Agent, "codex_record")):
+                h.agents, h.ps = [agent("working", SID, "antigravity")], None
+                h.office.sync()
+        self.assertIsNone(h.office.agents[SID].placeholder)
+        self.assertEqual({p["_pid"] for s, e, p in h.hooks}, {oficina.os.getpid()})
+
+    @unittest.skipUnless(sys.platform == "win32", "Windows job objects")
+    def test_placeholder_is_a_suspended_process_held_by_a_kill_on_close_job(self):
+        with patch.object(oficina, "SHIM", Path(sys.executable)):
+            held = oficina.Placeholder()
+        try:
+            self.assertIsNone(held.process.poll(), "Suspended, not exited")
+        finally:
+            held.end()
+        self.assertIsNotNone(held.process.poll())
+
+    def test_older_orca_without_provider_in_ps_reads_agent_list(self):
+        h = Harness()
+        original = h.worktrees
+
+        def without_provider():
+            groups = original()
+            for group in groups:
+                for row in group["agents"]:
+                    row.pop("agentType")
+            return groups
+        h.worktrees = without_provider
+        agents = h.sync([agent("working", SID, "claude")], [ps_row(SID, children=[])])
+        self.assertIn(SID, agents)
+        self.assertEqual(h.queries, [("worktree", "ps"), ("agent", "list")])
+
+
+class OrcaVersionTests(unittest.TestCase):
+    def notice(self, version_line, profile):
+        done = oficina.subprocess.CompletedProcess([], 0, version_line, "")
+        with patch.object(oficina.subprocess, "run", return_value=done), \
+                patch.object(oficina, "PROFILE", profile):
+            return oficina.orca_version_notice("orca.exe")
+
+    def test_newer_orca_is_noticed_once_per_version(self):
+        with tempfile.TemporaryDirectory(prefix="tmp-test-", dir=Path(__file__).parent) as directory:
+            profile = Path(directory)
+            self.assertIsNone(self.notice(oficina.VERIFIED_ORCA + "\n", profile))
+            self.assertIsNone(self.notice("1.4.100\n", profile))
+            self.assertIn("1.5.0", self.notice("1.5.0\n", profile))
+            self.assertIsNone(self.notice("1.5.0\n", profile), "Once per version")
+            self.assertIn("1.5.1", self.notice("1.5.1\n", profile))
+            self.assertIsNone(self.notice("unexpected\n", profile))
+
+
+def load_bump():
+    import importlib.util
+    path = Path(__file__).parent / ".github" / "scripts" / "bump_pixtuoid.py"
+    spec = importlib.util.spec_from_file_location("bump_pixtuoid", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+class ReleaseCheckTests(unittest.TestCase):
+    """The scheduled workflow's bump logic, against release fixtures (no network)."""
+
+    def setUp(self):
+        self.bump = load_bump()
+        self.installer = (Path(__file__).parent / "instalar.py").read_text(encoding="utf-8")
+
+    def release(self, tag, digest="sha256:" + "a" * 64, **extra):
+        version = tag.removeprefix("v")
+        asset = {"name": f"pixtuoid-v{version}-x86_64-pc-windows-msvc.zip", "digest": digest,
+                 "browser_download_url": f"https://example.invalid/{version}.zip"}
+        return dict({"tag_name": tag, "draft": False, "prerelease": False, "assets": [asset]}, **extra)
+
+    def test_newer_stable_release_bumps_version_and_sha(self):
+        version, _url, sha = self.bump.asset_for(self.release("v9.1.0"))
+        text = self.bump.bump(self.installer, version, sha)
+        self.assertIn('VERSION = "9.1.0"', text)
+        self.assertIn('SHA256 = "' + "a" * 64 + '"', text)
+        self.assertEqual(len(text.splitlines()), len(self.installer.splitlines()), "Only the pin changes")
+
+    def test_current_or_older_release_changes_nothing(self):
+        pinned = ".".join(map(str, self.bump.pinned(self.installer)))
+        self.assertIsNone(self.bump.bump(self.installer, pinned, "b" * 64))
+        self.assertIsNone(self.bump.bump(self.installer, "0.1.0", "b" * 64))
+
+    def test_drafts_prereleases_and_unverifiable_assets_are_refused(self):
+        for release in (self.release("v9.1.0", prerelease=True), self.release("v9.1.0", draft=True),
+                        self.release("v9.1.0-rc.1"), self.release("v9.1.0", digest=None),
+                        dict(self.release("v9.1.0"), assets=[])):
+            with self.assertRaises(ValueError):
+                self.bump.asset_for(release)
+
+    def test_the_pin_matches_the_published_digest_of_v0_23_0(self):
+        # Verified with `gh api repos/pixtuoid/pixtuoid/releases/latest` on 2026-11-20.
+        self.assertIn('SHA256 = "e52205aba4061112f94f40529d920e0346c98c0f4123edeceebee12e80303dad"',
+                      self.installer)
 
 
 if __name__ == "__main__":

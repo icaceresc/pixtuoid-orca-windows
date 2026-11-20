@@ -2,11 +2,14 @@
 import ctypes
 import datetime as dt
 import json
+import ntpath
 import os
 from pathlib import Path
 import shutil
 import subprocess
+import re
 import sys
+import threading
 import time
 import uuid
 
@@ -21,8 +24,17 @@ RUN = HOME / "actividad"
 SOURCES = {"claude": "claude-code", "codex": "codex", "antigravity": "antigravity",
            "opencode": "opencode", "opencode2": "opencode"}
 ACTIVE = {"working", "waiting", "blocked"}
-POLL_SECONDS = 1.25
-NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+# Each Orca CLI call starts a Node runtime (about 1 s of CPU on a busy PC), so the office
+# reads Orca once per cycle and waits at least twice as long as that read took.
+POLL_SECONDS = 1.5
+MAX_POLL_SECONDS = 10
+# A busy PC can take many seconds to start the CLI; killing it early only wastes that work.
+ORCA_TIMEOUT = 30
+# The newest Orca this adapter was verified against. A newer Orca most likely still works:
+# the office says so once per version, so a change in Orca's output is not a silent surprise.
+VERIFIED_ORCA = "1.4.266"
+# Everything the office starts runs below normal priority, so the Human's own work wins.
+NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0) | getattr(subprocess, "BELOW_NORMAL_PRIORITY_CLASS", 0)
 
 
 def office_env(pipe=None):
@@ -42,7 +54,7 @@ def office_env(pipe=None):
 
 def orca_json(orca, *args):
     response = subprocess.run([orca, *args, "--environment", "local", "--json"],
-                              stdin=subprocess.DEVNULL, capture_output=True, timeout=10,
+                              stdin=subprocess.DEVNULL, capture_output=True, timeout=ORCA_TIMEOUT,
                               creationflags=NO_WINDOW)
     try:
         answer = json.loads(response.stdout)
@@ -79,7 +91,7 @@ def emit(env, source, payload, event=None):
     elif event:
         payload["hook_event_name"] = event
     subprocess.run(arguments, input=json.dumps(payload).encode("utf-8"), env=env,
-                   creationflags=NO_WINDOW, timeout=2, stdout=subprocess.DEVNULL,
+                   creationflags=NO_WINDOW, timeout=10, stdout=subprocess.DEVNULL,
                    stderr=subprocess.DEVNULL, check=True)
 
 # Sources whose Pixtuoid decoder links a child to a parent of the SAME source.
@@ -98,19 +110,112 @@ def stable_id(identifier):
         return str(uuid.uuid5(uuid.NAMESPACE_URL, "orca:" + identifier))
 
 
+# Pixtuoid's two-letter name prefixes, reused for the provider name on a name card.
+SHORT = {"claude-code": "cc", "codex": "cx", "opencode": "oc", "antigravity": "ag"}
+NAMES = {"claude-code": "claude", "codex": "codex", "opencode": "opencode", "antigravity": "antigravity"}
+# Tool names Pixtuoid gives a meaning of its own (a delegation that ends its subtree,
+# a permission prompt). Orca's tool name is still shown, as plain text.
+RESERVED_TOOLS = {"agent", "task", "subagent", "spawn_agent", "ask_permission", "ask_question"}
+UNSAFE_TEXT = str.maketrans({c: " " for c in '\\/:*?"<>|\t\r\n'})
+# Pixtuoid sweeps an agent that sends nothing for 5 to 60 minutes (by source and state),
+# while Orca may list it for hours: the office repeats each agent's state this often.
+HEARTBEAT_SECONDS = 120
+
+
+def clean_text(text, limit=40):
+    """Printable, path-safe text for a label part or a tool name; '' when nothing is left."""
+    if not isinstance(text, str):
+        return ""
+    text = "".join(c for c in text.translate(UNSAFE_TEXT) if c.isprintable())
+    return " ".join(text.split())[:limit].strip(" .")
+
+
+def tool_label(name):
+    """The name Pixtuoid shows for Orca's current tool: its name only, never its input."""
+    name = clean_text(name)
+    if not name:
+        return None
+    return f"Orca: {name}" if name.lower() in RESERVED_TOOLS else name
+
+
+class Placeholder:
+    """A suspended, never-resumed process whose pid stands for one Antigravity agent.
+
+    Pixtuoid has no end hook for Antigravity: it ends an Antigravity session when the
+    `_pid` its hooks carry exits. Each Antigravity coworker gets its own placeholder, so
+    ending it walks exactly that coworker out. The placeholders sit in a kill-on-close job,
+    so they never outlive the office, even if it is killed.
+    """
+
+    job = None
+
+    def __init__(self):
+        """Raises OSError, leaving nothing behind, when the job cannot hold the placeholder."""
+        if Placeholder.job is None:
+            Placeholder.job = kill_on_close_job()
+        if not Placeholder.job:
+            raise OSError("no kill-on-close job for Antigravity placeholders")
+        self.process = subprocess.Popen([str(SHIM), "--version"], stdin=subprocess.DEVNULL,
+                                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                        creationflags=NO_WINDOW | 0x00000004)  # CREATE_SUSPENDED
+        kernel = ctypes.windll.kernel32
+        kernel.OpenProcess.restype = ctypes.c_void_p
+        handle = kernel.OpenProcess(0x0101, False, self.process.pid)  # SET_QUOTA | TERMINATE
+        held = bool(handle) and bool(kernel.AssignProcessToJobObject(ctypes.c_void_p(Placeholder.job),
+                                                                      ctypes.c_void_p(handle)))
+        if handle:
+            kernel.CloseHandle(ctypes.c_void_p(handle))
+        if not held:
+            self.end()
+            raise OSError("the placeholder could not join the kill-on-close job")
+        self.pid = self.process.pid
+
+    def end(self):
+        if self.process.poll() is None:
+            self.process.kill()
+            self.process.wait(timeout=5)
+
+
+def kill_on_close_job():
+    """A job object whose processes end when the office's last handle to it closes."""
+    kernel = ctypes.windll.kernel32
+    kernel.CreateJobObjectW.restype = ctypes.c_void_p
+    job = kernel.CreateJobObjectW(None, None)
+    if not job:
+        return None
+
+    class Limits(ctypes.Structure):
+        _fields_ = [("a", ctypes.c_int64), ("b", ctypes.c_int64), ("flags", ctypes.c_uint32),
+                    ("c", ctypes.c_size_t), ("d", ctypes.c_size_t), ("e", ctypes.c_uint32),
+                    ("f", ctypes.c_size_t), ("g", ctypes.c_uint32), ("h", ctypes.c_uint32),
+                    ("io", ctypes.c_uint64 * 6), ("i", ctypes.c_size_t * 4)]
+    limits = Limits(flags=0x2000)  # JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+    if not kernel.SetInformationJobObject(ctypes.c_void_p(job), 9, ctypes.byref(limits), ctypes.sizeof(limits)):
+        kernel.CloseHandle(ctypes.c_void_p(job))
+        return None
+    return job
+
+
 class Agent:
     """One coworker: an Orca session, or a subagent Orca observed inside one.
 
     `source` is the Pixtuoid source it is drawn in. A child is drawn in its
     parent's source, because Pixtuoid links a child only to a parent of the
-    same source; `provider` keeps the agent's real provider for the log.
+    same source; `provider` keeps the agent's real provider.
+
+    Pixtuoid names a coworker `<source prefix>·<basename of its cwd>`, so the office
+    sends a folder whose basename is the coworker's title: its project (the Orca
+    workspace folder) and its role, plus its provider when that differs from the
+    prefix (`cx·my-repo · claude worker`). Only the title is synthetic; the parent
+    folder is the real one.
     """
 
     # Folder of Claude Code transcripts Pixtuoid watches in the isolated profile.
     # None (tests) leaves Pixtuoid's default label.
     names = None
 
-    def __init__(self, key, provider, cwd, trace, parent=None, label=None, owner=None, generation=0):
+    def __init__(self, key, provider, cwd, trace, parent=None, label=None, owner=None, generation=0,
+                 role=None):
         self.key = key
         self.provider = provider
         self.parent = parent
@@ -122,12 +227,39 @@ class Agent:
             # Back after leaving (its dispatcher closed first): a new coworker, so
             # Pixtuoid never sees a start for an id it is still ending.
             self.id = str(uuid.uuid5(uuid.UUID(self.id), str(generation)))
-        self.cwd = str(cwd)
+        self.workdir = str(cwd)
+        self.project = clean_text(ntpath.basename(self.workdir.rstrip("\\/")), 30) or "orca"
+        self.role = role
+        self.cwd = self.workdir if self.title == self.project else \
+            ntpath.join(ntpath.dirname(self.workdir.rstrip("\\/")), self.title)
         self.label = label
         self.state = None
+        self.tool = None
         self.turn = 0
+        self.calls = 0
+        self.call = None
+        self.sent_at = 0.0
+        self.placeholder = None
         now = dt.datetime.now().astimezone()
         self.rollout = trace / now.strftime("%Y/%m/%d") / f"rollout-{now:%Y-%m-%dT%H-%M-%S}-{self.id}.jsonl"
+
+    @property
+    def title(self):
+        """What follows Pixtuoid's source prefix (its desk badge shows about ten characters).
+
+        A top-level agent reads its project (`my-repo`, `my-repo · orchestrator`); a worker
+        or subagent reads its role first (`worker · my-repo`, `Explore subagent · my-repo`),
+        with its provider when the prefix is its parent's (`claude worker · my-repo`).
+        """
+        role = self.role
+        if role and self.provider != self.source:
+            role = f"{NAMES[self.provider]} {role}"
+        return self.compose(role)
+
+    def compose(self, role):
+        if not role:
+            return self.project
+        return f"{self.project} · {role}" if self.owner is None else f"{role} · {self.project}"
 
     @property
     def session(self):
@@ -142,8 +274,8 @@ class Agent:
 
         Pixtuoid reads it as the child's own transcript (same `agent-<id>` key) and
         relabels it from `attributionAgent`, so a Codex worker under a Claude parent
-        reads "codex" while keeping its place in the tree. Only Claude Code has
-        such a label path in Pixtuoid v0.23.0.
+        reads "cx·my-repo · worker" while keeping its place in the tree. Only Claude Code
+        has such a label path in Pixtuoid v0.23.0.
         """
         if (self.names is None or not self.parent or self.source != "claude-code"
                 or self.provider == "claude-code"):
@@ -154,8 +286,9 @@ class Agent:
         # Only a label: a file the profile refuses must never stall the office.
         card = self.name_card
         if card:
-            line = {"type": "assistant", "attributionAgent": self.provider, "cwd": self.cwd,
-                    "sessionId": self.parent.session, "message": {"content": []}}
+            title = self.compose(self.role)
+            line = {"type": "assistant", "attributionAgent": f"{SHORT[self.provider]}·{title}",
+                    "cwd": self.cwd, "sessionId": self.parent.session, "message": {"content": []}}
             try:
                 card.parent.mkdir(parents=True, exist_ok=True)
                 card.write_text(json.dumps(line) + "\n", encoding="utf-8")
@@ -179,106 +312,181 @@ class Agent:
         with self.rollout.open("a", encoding="utf-8") as out:
             out.write(json.dumps(line) + "\n")
 
-    def transition(self, env, state):
+    def send(self, env, payload, event=None):
+        # `_pid` spares the hook its process-table walk. For Antigravity it is this
+        # coworker's own placeholder, whose exit Pixtuoid reads as the session's end.
+        payload["_pid"] = self.placeholder.pid if self.placeholder else os.getpid()
+        emit(env, self.source, payload, event)
+        self.sent_at = time.monotonic()
+
+    def transition(self, env, state, tool=None):
+        """Move to an Orca state; while working, `tool` is Orca's current tool name (or None)."""
         prev = self.state
-        if prev == state:
+        tool = tool if state == "working" else None
+        if prev == state and tool == self.tool:
+            return
+        if prev == state:  # still working, another tool
+            self._end_call(env)
+            self.tool = tool
+            self._start_call(env)
             return
         if state in ACTIVE and prev not in ACTIVE:
             self.turn += 1
-        if self.parent and self.source != "opencode":
-            self._child_hooks(env, prev, state)
-        else:
-            self._session_hooks(env, prev, state)
+        if prev == "working":
+            self._end_call(env)
+        self.tool = tool
+        self._enter(env, prev, state)
         self.state = state
 
-    def _child_hooks(self, env, prev, state):
-        # Claude Code and Codex subagent hooks: the root's session_id plus agent_id.
-        common = {"session_id": self.parent.session, "agent_id": self.id, "cwd": self.cwd}
-        def hook(event, **fields):
-            emit(env, self.source, dict(common, **fields), event)
-        if prev is None:
-            hook("SubagentStart", agent_type=self.label or "subagent")
-            self.write_card()
-        if prev in ACTIVE:
-            hook("Stop", turn_id=str(self.turn))
-        if state == "working":
-            hook("PreToolUse", tool_name="Orca: active turn", tool_use_id=f"{self.id}:{self.turn}",
-                 tool_input={})
-        elif state in {"blocked", "waiting"}:
-            if self.source == "codex":
-                hook("PermissionRequest", turn_id=str(self.turn), tool_name=f"Orca: {state}", tool_input={})
-            else:
-                hook("Notification", notification_type="permission_prompt", message=f"Orca: {state}")
-        elif state == "closed":
-            hook("SubagentStop", agent_transcript_path="")
-            self.drop_card()
+    def heartbeat(self, env):
+        """Repeat the current state with the same ids, so Pixtuoid never sweeps a live agent."""
+        if self.state is None or self.state == "closed":
+            return
+        self._enter(env, self.state, self.state)
 
-    def _session_hooks(self, env, prev, state):
-        source = self.source
+    # Per source: what enters a state, and how a tool call starts and ends.
+
+    def _hook(self, env, event, **fields):
+        if self.parent and self.source in {"claude-code", "codex"}:
+            common = {"session_id": self.parent.session, "agent_id": self.id, "cwd": self.cwd}
+        else:
+            common = {"session_id": self.id, "cwd": self.cwd}
+        self.send(env, dict(common, **fields), event)
+
+    def _ag(self, env, event, **fields):
+        self.send(env, dict(conversationId=self.id, workspacePaths=[self.cwd], **fields), event)
+
+    def _oc(self, env, event, **fields):
+        data = {"sessionID": self.id, "location": {"directory": self.cwd}, **fields}
+        if self.parent and self.state is None and event == "session.execution.started":
+            data["parentID"] = self.parent.session
+        self.send(env, {"type": event, "turn": self.turn, "data": data})
+
+    def _rollout(self):
+        # Codex turns and tool calls ride its rollout file; children name their parent there too.
+        return self.source == "codex"
+
+    def _start_call(self, env):
+        self.calls += 1
+        self.call = f"{self.id}:{self.turn}:{self.calls}"
+        self._send_call(env)
+
+    def _send_call(self, env):
+        name = self.tool or "Orca: active turn"
+        if self.source == "claude-code":
+            self._hook(env, "PreToolUse", tool_name=name, tool_use_id=self.call, tool_input={})
+        elif self.source == "codex":
+            self.codex_record("response_item", {"type": "function_call", "name": name,
+                                                "call_id": self.call, "arguments": "{}"})
+        elif self.source == "opencode":
+            self._oc(env, "session.tool.input.started", id=self.call, name=name)
+        else:
+            self._ag(env, "PreToolUse", stepIdx=self.calls, toolCall={"name": name})
+
+    def _end_call(self, env):
+        if self.call is None:
+            return
+        if self.source == "claude-code":
+            self._hook(env, "PostToolUse", tool_name=self.tool or "Orca: active turn",
+                       tool_use_id=self.call, tool_input={}, tool_response={})
+        elif self.source == "codex":
+            self.codex_record("response_item", {"type": "function_call_output", "call_id": self.call,
+                                                "output": ""})
+        elif self.source == "opencode":
+            self._oc(env, "session.tool.success", id=self.call)
+        else:
+            self._ag(env, "PostToolUse", stepIdx=self.calls)
+        self.call = None
+
+    def _enter(self, env, prev, state):
+        """Send what moves Pixtuoid from `prev` to `state` (prev == state: a heartbeat)."""
+        source, child = self.source, bool(self.parent) and self.source in {"claude-code", "codex"}
+        repeat = prev == state
         turn_id = str(self.turn)
-        common = {"session_id": self.id, "cwd": self.cwd}
-        def hook(event, **fields):
-            emit(env, source, dict(common, **fields), event)
-        def ag(event, **fields):
-            emit(env, source, dict(conversationId=self.id, workspacePaths=[self.cwd], **fields), event)
-        def oc(event, **fields):
-            data = {"sessionID": self.id, "location": {"directory": self.cwd}, **fields}
-            if self.parent and prev is None and event == "session.execution.started":
-                data["parentID"] = self.parent.session
-            emit(env, source, {"type": event, "turn": self.turn, "data": data})
         if source == "opencode":
             if state == "closed":
-                oc("session.deleted")
+                self._oc(env, "session.deleted")
             elif state == "working":
+                if repeat:
+                    return self._send_call(env)
                 if prev in {"blocked", "waiting"}:
-                    oc("session.execution.succeeded")
+                    self._oc(env, "session.execution.succeeded")
                     self.turn += 1
-                oc("session.execution.started")
+                self._oc(env, "session.execution.started")
+                self._start_call(env)
             elif state in {"blocked", "waiting"}:
                 if prev is None:
-                    oc("session.execution.started")
-                oc("permission.asked", action=f"Orca: {state}")
+                    self._oc(env, "session.execution.started")
+                self._oc(env, "permission.asked", action=f"Orca: {state}")
             elif prev is None and self.parent:
                 # A child first seen idle still needs its parent link.
-                oc("session.execution.started")
-                oc("session.execution.succeeded")
+                self._oc(env, "session.execution.started")
+                self._oc(env, "session.execution.succeeded")
             else:
-                oc("session.execution.succeeded")
-        elif source == "antigravity":
+                self._oc(env, "session.execution.succeeded")
+            return
+        if source == "antigravity":
+            if state == "closed":
+                if self.placeholder:
+                    self.placeholder.end()
+                return
             if prev is None:
-                ag("SessionStart")
-            if prev in ACTIVE:
-                ag("PostToolUse", stepIdx=1)
-                ag("Stop")
+                try:
+                    self.placeholder = placeholder()
+                except (OSError, subprocess.SubprocessError):
+                    # Without one it still shows; Pixtuoid's sweep then ends it, as before.
+                    self.placeholder = None
+                self._ag(env, "SessionStart")
+            if prev in ACTIVE and not repeat:
+                self._ag(env, "Stop")
             if state == "working":
-                ag("PreToolUse", stepIdx=1, toolCall={"name": "Orca: active turn"})
-            elif state in {"blocked", "waiting"}:
-                ag("PreToolUse", stepIdx=1, toolCall={"name": "ask_question"})
-        elif source == "codex":
-            if prev is None:
-                hook("SessionStart")
-                self.codex_record("session_meta", {"id": self.id, "cwd": self.cwd, "originator": "Orca"})
-            if prev in ACTIVE and prev != state:
-                hook("Stop", turn_id=turn_id)
+                return self._send_call(env) if repeat else self._start_call(env)
+            if state in {"blocked", "waiting"}:
+                self._ag(env, "PreToolUse", stepIdx=self.calls + 1, toolCall={"name": "ask_question"})
+            elif repeat:
+                self._ag(env, "Stop")
+            return
+        # Claude Code and Codex: sessions and (as `agent_id` under the root's session) children.
+        if prev is None:
+            self._hook(env, "SubagentStart" if child else "SessionStart",
+                       **({"agent_type": self.label or "subagent"} if child else {}))
+            if child:
+                self.write_card()
+            if self._rollout():
+                meta = {"id": self.id, "cwd": self.cwd, "originator": "Orca"}
+                if child:
+                    meta["parent_thread_id"] = self.parent.session
+                self.codex_record("session_meta", meta)
+        if prev in ACTIVE and not repeat:
+            self._hook(env, "Stop", turn_id=turn_id)
+            if self._rollout():
                 self.codex_record("event_msg", {"type": "task_complete", "turn_id": turn_id})
-            if state == "working":
-                self.turn += 1
-                self.codex_record("event_msg", {"type": "task_started", "turn_id": str(self.turn)})
-            elif state in {"blocked", "waiting"}:
-                hook("PermissionRequest", turn_id=turn_id, tool_name=f"Orca: {state}", tool_input={})
-            elif state == "closed":
-                hook("SessionEnd")
-        else:
-            if prev is None:
-                hook("SessionStart")
-            if prev in ACTIVE:
-                hook("Stop")
-            if state == "working":
-                hook("PreToolUse", tool_name="Orca: active turn", tool_use_id=turn_id, tool_input={})
-            elif state in {"blocked", "waiting"}:
-                hook("Notification", notification_type="permission_prompt", message=f"Orca: {state}")
-            elif state == "closed":
-                hook("SessionEnd")
+        if state == "working":
+            if repeat:
+                return self._send_call(env)
+            if self._rollout():
+                self.codex_record("event_msg", {"type": "task_started", "turn_id": turn_id})
+            self._start_call(env)
+        elif state in {"blocked", "waiting"}:
+            if source == "codex":
+                self._hook(env, "PermissionRequest", turn_id=turn_id, tool_name=f"Orca: {state}", tool_input={})
+            else:
+                self._hook(env, "Notification", notification_type="permission_prompt", message=f"Orca: {state}")
+        elif state == "closed":
+            if child:
+                self._hook(env, "SubagentStop", agent_transcript_path="")
+                self.drop_card()
+            else:
+                self._hook(env, "SessionEnd")
+        elif repeat:  # an idle heartbeat: a turn end on an idle coworker changes nothing else
+            if self._rollout():
+                self.codex_record("event_msg", {"type": "task_complete", "turn_id": turn_id})
+            else:
+                self._hook(env, "Stop", turn_id=turn_id)
+
+
+def placeholder():
+    return Placeholder()
 
 
 def child_rows(row):
@@ -301,7 +509,8 @@ def child_rows(row):
                 state = "closed"
             else:
                 state = CHILD_STATES.get(child.get("state"))
-            out["child:" + child["id"]] = (state, child.get("agentType") or child.get("name"))
+            # The subagent's type only: a child's `name` or description may be user text.
+            out["child:" + child["id"]] = (state, child.get("agentType"))
         return out
     if isinstance(row.get("subagents"), list):
         return {"child:" + child["id"]: (CHILD_STATES.get(child.get("state")), child.get("agentType"))
@@ -335,25 +544,30 @@ class Office:
                 self.paths[worktree] = worktree.partition("::")[2] or HOME
         return self.paths[worktree]
 
-    def hierarchy(self):
-        """Orca's parent links and subagents, or None when `worktree ps` is unavailable."""
+    def read_orca(self):
+        """One snapshot of Orca: agent rows plus parent links, subagents and folders.
+
+        `orca worktree ps` alone carries each agent's provider, state, parent pane and
+        children, so a cycle normally costs one CLI call. `orca agent list` is read only
+        when `ps` fails or is truncated; the hierarchy is then whatever `ps` could vouch for.
+        """
         try:
             ps = orca_json(self.orca, "worktree", "ps")
-            worktrees = list(ps.get("worktrees") or [])
+            worktrees = [w for w in ps.get("worktrees") or [] if isinstance(w, dict)]
         except (OSError, ValueError, KeyError, TypeError, AttributeError, RuntimeError,
                 subprocess.SubprocessError):
-            return None
+            ps, worktrees = None, []
         pane_session, parents, children, paths = {}, {}, {}, {}
-        rows = []
+        ps_rows = []
         for worktree in worktrees:
             if worktree.get("worktreeId") and worktree.get("path"):
                 paths[worktree["worktreeId"]] = worktree["path"]
             for row in worktree.get("agents") or []:
-                if isinstance(row.get("orcaSessionId"), str) and row["orcaSessionId"]:
-                    rows.append(row)
+                if isinstance(row, dict) and isinstance(row.get("orcaSessionId"), str) and row["orcaSessionId"]:
+                    ps_rows.append(dict(row, agent=row.get("agentType"), worktreeId=worktree.get("worktreeId")))
                     if row.get("paneKey"):
                         pane_session[row["paneKey"]] = row["orcaSessionId"]
-        for row in rows:
+        for row in ps_rows:
             sid = row["orcaSessionId"]
             parent = pane_session.get(row.get("parentPaneKey"))
             if parent and parent != sid:
@@ -361,23 +575,29 @@ class Office:
             found = child_rows(row)
             if found is not None:
                 children[sid] = found
-        return parents, children, paths
+        # Orca older than 1.4.266 may leave a row's provider or state out of `ps`.
+        complete = all(row.get("agent") and row.get("state") for row in ps_rows)
+        if ps is not None and not ps.get("truncated") and complete:
+            agents = ps_rows
+        else:
+            snapshot = orca_json(self.orca, "agent", "list")
+            if snapshot.get("truncated"):
+                raise RuntimeError("Orca returned a truncated session list")
+            agents = snapshot["agents"]
+        return agents, parents, children, paths
 
     def sync(self):
-        snapshot = orca_json(self.orca, "agent", "list")
-        if snapshot.get("truncated"):
-            raise RuntimeError("Orca returned a truncated session list")
-        rows = {row["orcaSessionId"]: row for row in snapshot["agents"]
+        agents, parents, children, ps_paths = self.read_orca()
+        rows = {row["orcaSessionId"]: row for row in agents
                 if isinstance(row.get("orcaSessionId"), str) and row["orcaSessionId"]
                 and row.get("agent") in SOURCES and row.get("state") in ACTIVE | {"done"}}
-        hierarchy = self.hierarchy()
-        parents, children, ps_paths = hierarchy if hierarchy else ({}, {}, {})
 
         def rank(sid, hops=0):
             # Parents before children, so a worker can attach under its dispatcher.
             parent = parents.get(sid)
             return 0 if parent not in rows or hops > 8 else 1 + rank(parent, hops + 1)
 
+        dispatchers = {parents[sid] for sid in rows if sid in parents}
         seen = set()
         for sid in sorted(rows, key=rank):
             row = rows[sid]
@@ -394,11 +614,16 @@ class Office:
                 self.close(agent)
                 agent = None
             if agent is None:
-                agent = self.admit(sid, SOURCES[row["agent"]], self.cwd_for(row, ps_paths), parent)
+                if parents.get(sid) in rows:
+                    role = "worker" if self.linked(parent) else                         f"worker of {NAMES[parent.provider]}" if parent else "worker"
+                else:
+                    role = "orchestrator" if sid in dispatchers else None
+                agent = self.admit(sid, SOURCES[row["agent"]], self.cwd_for(row, ps_paths), parent,
+                                   role=role)
                 if agent is None:
                     continue
             seen.add(sid)
-            self.move(agent, state)
+            self.move(agent, state, tool_label(row.get("toolName")))
             found = children.get(sid)
             if found is None:
                 # Orca cannot vouch for this row's subagents now: keep them as they were.
@@ -414,7 +639,9 @@ class Office:
                 if child_state == "closed" or (kid is None and child_state == "done"):
                     continue
                 if kid is None:
-                    kid = self.admit(key, agent.provider, agent.cwd, agent, label)
+                    kind = clean_text(label, 24)
+                    kid = self.admit(key, agent.provider, agent.workdir, agent, label,
+                                     role=f"{kind} subagent" if kind else "subagent")
                     if kid is None:
                         continue
                 seen.add(key)
@@ -422,6 +649,10 @@ class Office:
         gone = [agent for key, agent in self.agents.items() if key not in seen]
         for agent in sorted(gone, key=Agent.depth, reverse=True):
             self.close(agent)
+        now = time.monotonic()
+        for agent in list(self.agents.values()):
+            if now - agent.sent_at > HEARTBEAT_SECONDS:
+                agent.heartbeat(self.env)
 
     @staticmethod
     def linked(parent):
@@ -434,19 +665,22 @@ class Office:
             yield agent
             agent = agent.parent
 
-    def admit(self, key, provider, cwd, owner, label=None):
+    def admit(self, key, provider, cwd, owner, label=None, role=None):
         parent = self.linked(owner)
         source = parent.source if parent else provider
         if source not in self.configured:
             return None
-        agent = Agent(key, provider, cwd, self.trace, parent, label, owner, self.generations.get(key, 0))
+        agent = Agent(key, provider, cwd, self.trace, parent, label, owner, self.generations.get(key, 0),
+                      role)
         self.agents[key] = agent
         return agent
 
-    def move(self, agent, state):
+    def move(self, agent, state, tool=None):
         if state != agent.state:
-            agent.transition(self.env, state)
+            agent.transition(self.env, state, tool)
             self.record("orca", agent, state)
+        elif state == "working" and tool != agent.tool:
+            agent.transition(self.env, state, tool)
 
     def close(self, agent):
         if agent.key not in self.agents:
@@ -466,6 +700,7 @@ def kernel32():
         getattr(kernel, name).restype = ctypes.c_void_p
     kernel.CloseHandle.argtypes = [ctypes.c_void_p]
     kernel.SetEvent.argtypes = [ctypes.c_void_p]
+    kernel.SetPriorityClass.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
     kernel.WaitForSingleObject.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
     kernel.WaitForSingleObject.restype = ctypes.c_uint32
     return kernel
@@ -519,6 +754,37 @@ def close_window(office):
         office.terminate()
         office.wait(timeout=8)
 
+def orca_version_notice(orca):
+    """A one-time notice when the local Orca is newer than VERIFIED_ORCA, else None."""
+    try:
+        answer = subprocess.run([orca, "--version"], stdin=subprocess.DEVNULL, capture_output=True,
+                                text=True, timeout=ORCA_TIMEOUT, creationflags=NO_WINDOW).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    found = re.search(r"(\d+)\.(\d+)\.(\d+)", answer or "")
+    if not found:
+        return None
+    version = found.group(0)
+    if tuple(map(int, found.groups())) <= tuple(map(int, VERIFIED_ORCA.split("."))):
+        return None
+    seen = PROFILE / "orca-version-notified.txt"
+    try:
+        if seen.read_text(encoding="utf-8").strip() == version:
+            return None
+    except OSError:
+        pass
+    try:
+        seen.write_text(version + "\n", encoding="utf-8")
+    except OSError:
+        pass
+    return (f"Orca {version} is newer than {VERIFIED_ORCA}, the version this office was verified "
+            "with. It should keep working; if agents look wrong, check "
+            "github.com/icaceresc/pixtuoid-orca-windows for an update.")
+
+def poll_wait(seconds_taken, failed=False):
+    """Seconds to wait before the next read: at least twice what the last read took."""
+    return min(MAX_POLL_SECONDS, max(3.0 if failed else POLL_SECONDS, 2 * seconds_taken))
+
 def main():
     if "--stop" in sys.argv[1:]:
         try:
@@ -532,6 +798,8 @@ def main():
     if orca is None:
         raise FileNotFoundError("orca.exe")
     kernel = kernel32()
+    # Below normal priority for the bridge too: a visual aid must never slow the PC down.
+    kernel.SetPriorityClass(ctypes.c_void_p(-1), 0x00004000)
     mutex_name, stop_name = names()
     mutex = kernel.CreateMutexW(None, False, mutex_name)
     if not mutex:
@@ -580,9 +848,16 @@ def main():
             else:
                 raise RuntimeError("Pixtuoid did not open its local pipe")
             record("ready")
+            notice = orca_version_notice(orca)
+            if notice:
+                record("orca-newer-than-verified")
+                # Its own thread: the notice never holds the office back.
+                threading.Thread(target=ctypes.windll.user32.MessageBoxW,
+                                 args=(0, notice, "Pixtuoid · Orca", 0x40 | 0x10000), daemon=True).start()
             office_state = Office(orca, env, trace, record, configured)
             failed = False
             while office.poll() is None:
+                started = time.monotonic()
                 try:
                     office_state.sync()
                     if failed:
@@ -593,7 +868,10 @@ def main():
                     if not failed:
                         record(f"orca-sync-error:{type(error).__name__}")
                     failed = True
-                wait = int(1000 * (POLL_SECONDS if not failed else 3))
+                taken = time.monotonic() - started
+                if taken > 5:
+                    record(f"orca-slow-read:{taken:.0f}s")
+                wait = int(1000 * poll_wait(taken, failed))
                 if kernel.WaitForSingleObject(stop, wait) == 0:
                     record("stop-requested")
                     close_window(office)
