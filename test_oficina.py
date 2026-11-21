@@ -773,7 +773,9 @@ class ReleaseCheckTests(unittest.TestCase):
 
     def test_the_bump_leaves_the_dungeon_pin_alone(self):
         text = self.bump.bump(self.installer, "9.1.0", "a" * 64)
-        self.assertIn("DUNGEON_SHA256 = None", text)
+        dungeon = [line for line in self.installer.splitlines() if line.startswith("DUNGEON_")]
+        self.assertTrue(dungeon)
+        self.assertEqual([line for line in text.splitlines() if line.startswith("DUNGEON_")], dungeon)
 
 
 class OrcaToolTests(unittest.TestCase):

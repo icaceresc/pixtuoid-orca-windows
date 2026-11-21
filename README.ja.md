@@ -42,8 +42,6 @@ Windows 用の Orca プラグインです。フローティングのピクセル
 2. コマンドパレットで、公式のオフィスなら **Pixtuoid: Install or update the office app**、Dungeons & Agents なら **Pixtuoid: Use Dungeons & Agents** を実行します。ビルドをダウンロードし、固定された SHA-256 を確認し、Orca が報告するエージェントを接続します。
 3. **Pixtuoid: Open office window** を実行するか、Orca のステータスバーの **Pixtuoid** をクリックします。
 
-Dungeons & Agents のリリースが公開されてこのプラグインに固定されるまでは、**Use Dungeons & Agents** はその旨を表示し、何も変更しません。その間はクローンから自分のビルドをインストールしてください（[クローンから実行](#クローンから実行)を参照）。
-
 | コマンド | 内容 |
 |---|---|
 | Pixtuoid: Open office window | ウィンドウを開きます。同時に開けるのは 1 つだけです |

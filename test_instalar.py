@@ -275,15 +275,14 @@ class ModeTests(unittest.TestCase):
         self.assertIsNone(parse().modo)
         self.assertIn("invalid choice", parse("--modo", "tavern"))
 
-    def test_dungeon_is_unpinned_until_its_release_and_keeps_the_app(self):
-        self.assertIsNone(instalar.DUNGEON_SHA256, "Placeholder: the real pin lands before the gate")
-        with Sandbox() as box:
-            box.old_app({"kind": "pinned", "modo": "oficina", "sha256": instalar.SHA256})
-            box.serve(b"")
-            with self.assertRaisesRegex(RuntimeError, "--local"):
-                instalar.install_binary(self.options(modo="dungeon"))
-            self.assertEqual(box.downloads, [])
-            self.assertEqual((box.app / "pixtuoid.exe").read_bytes(), b"old")
+    def test_the_dungeon_pin_is_the_release_zip_and_its_digest(self):
+        # Verified on 2026-11-21: `gh release view v1.0.0 --repo icaceresc/dungeons-and-agents`
+        # lists this digest, and sha256sum of the downloaded zip prints it.
+        self.assertEqual(instalar.pin_for("dungeon"), (
+            "https://github.com/icaceresc/dungeons-and-agents/releases/download/v1.0.0/"
+            "dungeons-and-agents-v1.0.0-x86_64-pc-windows-msvc.zip",
+            "a6ee3dcade462d44e35defcb8e1acc791412ad15c0a4857b207b525e48b726ef"))
+        self.assertEqual(instalar.pin_for("oficina"), (instalar.RELEASE, instalar.SHA256))
 
     def test_dungeon_release_is_downloaded_verified_and_remembered(self):
         payload = release_zip()

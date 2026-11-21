@@ -42,8 +42,6 @@ Un plugin de Orca para Windows. Abre una ventana flotante en pixel art donde tus
 2. En la paleta de comandos, ejecuta **Pixtuoid: Install or update the office app** para la oficina oficial, o **Pixtuoid: Use Dungeons & Agents**. Descarga la compilación, comprueba su SHA-256 fijado y conecta los agentes que informa Orca.
 3. Ejecuta **Pixtuoid: Open office window**, o haz clic en **Pixtuoid** en la barra de estado de Orca.
 
-Hasta que la versión de Dungeons & Agents esté publicada y fijada en este plugin, **Use Dungeons & Agents** lo avisa y no cambia nada; instala una compilación propia desde un clon (ver [Ejecutar desde un clon](#ejecutar-desde-un-clon)).
-
 | Comando | Qué hace |
 |---|---|
 | Pixtuoid: Open office window | Abre la ventana; solo funciona una a la vez |

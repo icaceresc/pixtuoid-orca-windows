@@ -1,7 +1,8 @@
 """Install the office on Windows: official Pixtuoid (oficina) or Dungeons & Agents (dungeon).
 
-Each mode has its own pinned release; a local build or an owner-released zip can stand in
-for either. The chosen mode is remembered in app/origen.json for the next update.
+Each mode has its own pinned release, checked against its SHA-256; a local build or an
+owner-released zip can stand in for either. The chosen mode is remembered in app/origen.json
+for the next update.
 """
 import argparse
 import contextlib
@@ -25,11 +26,10 @@ VERSION = "0.23.0"
 ARCHIVE = f"pixtuoid-v{VERSION}-x86_64-pc-windows-msvc.zip"
 SHA256 = "e52205aba4061112f94f40529d920e0346c98c0f4123edeceebee12e80303dad"
 RELEASE = f"https://github.com/pixtuoid/pixtuoid/releases/download/v{VERSION}/{ARCHIVE}"
-# PLACEHOLDER: the Dungeons & Agents release (github.com/icaceresc/dungeons-and-agents) is not
-# published yet. Its zip URL and SHA-256 land here before the publication gate; until then
-# dungeon mode installs only from --local or --url.
-DUNGEON_RELEASE = None
-DUNGEON_SHA256 = None
+DUNGEON_VERSION = "1.0.0"
+DUNGEON_RELEASE = (f"https://github.com/icaceresc/dungeons-and-agents/releases/download/v{DUNGEON_VERSION}/"
+                   f"dungeons-and-agents-v{DUNGEON_VERSION}-x86_64-pc-windows-msvc.zip")
+DUNGEON_SHA256 = "a6ee3dcade462d44e35defcb8e1acc791412ad15c0a4857b207b525e48b726ef"
 MODES = ("oficina", "dungeon")
 CONFIG = PROFILE / "config" / "pixtuoid" / "config.toml"
 # Marks a data folder this installer made outside a clone, so the plugin may remove it.
@@ -75,12 +75,7 @@ def installed_mode():
 
 def pin_for(mode):
     """The pinned release (url, sha256) of a mode."""
-    if mode == "oficina":
-        return RELEASE, SHA256
-    if not (DUNGEON_RELEASE and DUNGEON_SHA256):
-        raise RuntimeError("Dungeons & Agents aun no tiene una version publicada fijada en este plugin. "
-                           "Instala una compilacion propia: py -3 instalar.py --modo dungeon --local <carpeta>")
-    return DUNGEON_RELEASE, DUNGEON_SHA256
+    return (DUNGEON_RELEASE, DUNGEON_SHA256) if mode == "dungeon" else (RELEASE, SHA256)
 
 
 def refuse_foreign(current):
@@ -234,8 +229,8 @@ def install_binary(options):
                   f"{origin.get('source', '?')}). Para volver a la version fijada: py -3 instalar.py --pinned")
             return
         install_release(mode, force=is_custom(origin) or mode != current)
-        print(f"Modo {mode}: {'Dungeons & Agents' if mode == 'dungeon' else f'Pixtuoid v{VERSION}'} "
-              f"instalado en {APP.parent}.")
+        name = f"Dungeons & Agents v{DUNGEON_VERSION}" if mode == "dungeon" else f"Pixtuoid v{VERSION}"
+        print(f"Modo {mode}: {name} instalado en {APP.parent}.")
 
 
 def parser_for():

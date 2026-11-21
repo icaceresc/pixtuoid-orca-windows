@@ -42,8 +42,6 @@
 2. 在命令面板中，运行 **Pixtuoid: Install or update the office app** 安装官方办公室，或运行 **Pixtuoid: Use Dungeons & Agents**。它会下载构建、校验其固定的 SHA-256，并连接 Orca 报告的智能体。
 3. 运行 **Pixtuoid: Open office window**，或点击 Orca 状态栏中的 **Pixtuoid**。
 
-在 Dungeons & Agents 的版本发布并在本插件中固定之前，**Use Dungeons & Agents** 会说明这一点且不做任何更改；在此期间请从克隆安装你自己的构建（见[从克隆运行](#从克隆运行)）。
-
 | 命令 | 作用 |
 |---|---|
 | Pixtuoid: Open office window | 打开窗口；同一时间只运行一个 |
