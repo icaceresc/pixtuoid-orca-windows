@@ -1,5 +1,6 @@
 """Regression tests for the read-only Orca projection (no Orca or Pixtuoid required)."""
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -838,6 +839,17 @@ class FocusTests(unittest.TestCase):
                 out.write('ex", "session_id": "b"}\n')
             self.assertEqual(feed.read_new(), [{"source": "codex", "session_id": "b"}])
             self.assertEqual(feed.read_new(), [])
+
+    def test_a_pulse_is_seen_once_per_write(self):
+        with tempfile.TemporaryDirectory(prefix="tmp-test-", dir=Path(__file__).parent) as directory:
+            path = Path(directory) / "pulse.json"
+            pulse = oficina.Pulse(path)
+            self.assertFalse(pulse.changed(), "No worker has pulsed yet")
+            path.write_text("1\n", encoding="utf-8")
+            self.assertTrue(pulse.changed())
+            self.assertFalse(pulse.changed())
+            os.utime(path, ns=(1, path.stat().st_mtime_ns + 1_000_000))
+            self.assertTrue(pulse.changed())
 
     def test_a_request_replaces_the_last_one_whole(self):
         with tempfile.TemporaryDirectory(prefix="tmp-test-", dir=Path(__file__).parent) as directory:

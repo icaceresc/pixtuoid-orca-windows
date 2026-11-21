@@ -948,7 +948,8 @@ class Pulse:
     """The worker's pulse file: whether Orca reported an agent change since the last look."""
 
     def __init__(self, path):
-        self.path, self.seen = path, self.read()
+        self.path = path
+        self.seen = self.read()
 
     def read(self):
         try:
