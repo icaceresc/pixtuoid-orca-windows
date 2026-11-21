@@ -12,6 +12,7 @@ SID = "8ef940e0-d3e6-4ee3-91a2-8b8c0195c103"
 KID = "0b7c1f5e-2d0a-4b8e-9f1e-3c5d7a9b1e2f"
 SUB = "557d4ca9-fd79-432a-ae31-7104d8b94c89"
 SUB2 = "6c0e1d1a-1111-4b8e-9f1e-3c5d7a9b1e2f"
+GRAND = "9a1b2c3d-4e5f-4a6b-8c7d-0e1f2a3b4c5d"
 
 
 def agent(state, session_id=SID, kind="codex", **extra):
@@ -55,6 +56,8 @@ class Harness:
         self.records = []
         self.agents, self.ps, self.truncated = [], None, False
         self.ps_error, self.ps_truncated = None, False
+        # Fields `worktree ps` adds to a worktree, by its id (`bot`, `botHome`, `path`).
+        self.worktree_fields = {}
         self.office = oficina.Office("orca.exe", {}, Path("."), self.record, set(configured))
 
     def record(self, *event):
@@ -82,7 +85,8 @@ class Harness:
             listed = dict(extra.get(sid) or {"orcaSessionId": sid}, agentType=row.get("agent"),
                           state=row.get("state"))
             groups.setdefault(worktree, []).append(listed)
-        return [{"worktreeId": worktree, "path": worktree.partition("::")[2], "agents": rows}
+        return [dict({"worktreeId": worktree, "path": worktree.partition("::")[2], "agents": rows},
+                     **self.worktree_fields.get(worktree, {}))
                 for worktree, rows in groups.items()]
 
     def emit(self, _env, source, payload, event=None):
@@ -145,12 +149,12 @@ class SessionTests(unittest.TestCase):
         h.orca_json = failing_show
         agents = h.sync([agent("working", worktreeId="repo::C:\\work\\gone"), agent("working", KID)])
         self.assertEqual(set(agents), {SID, KID})
-        self.assertEqual(agents[SID].cwd, "C:\\work\\gone")
+        self.assertEqual(agents[SID].workdir, "C:\\work\\gone")
 
     def test_worktree_path_comes_from_ps_without_extra_queries(self):
         h = Harness()
         agents = h.sync([agent("working", worktreeId="repo::C:\\work")], [ps_row(SID, children=[])])
-        self.assertEqual(agents[SID].cwd, "C:\\work")
+        self.assertEqual(agents[SID].workdir, "C:\\work")
         self.assertNotIn(("worktree", "show"), [q[:2] for q in h.queries])
 
     def test_truncated_list_is_not_misread_as_agents_exiting(self):
@@ -471,11 +475,12 @@ class IdentificationTests(unittest.TestCase):
     def basename(self, coworker):
         return oficina.ntpath.basename(coworker.cwd)
 
-    def test_top_level_agent_keeps_its_real_folder(self):
+    def test_top_level_agent_keeps_its_real_parent_folder(self):
         h = Harness()
         agents = h.sync([agent("working", SID, "claude", worktreeId="repo::C:\\work\\my-repo")])
-        self.assertEqual(agents[SID].cwd, "C:\\work\\my-repo")
-        self.assertEqual(h.hooks[0][2]["cwd"], "C:\\work\\my-repo")
+        self.assertEqual(agents[SID].workdir, "C:\\work\\my-repo")
+        self.assertEqual(agents[SID].cwd, "C:\\work\\my-repo · agent")
+        self.assertEqual(h.hooks[0][2]["cwd"], "C:\\work\\my-repo · agent")
 
     def test_roles_and_project_in_every_label(self):
         _h, agents = self.tree("claude", "claude")
@@ -505,6 +510,72 @@ class IdentificationTests(unittest.TestCase):
         self.assertEqual(oficina.tool_label("Agent"), "Orca: Agent")
         self.assertEqual(oficina.tool_label("ask_question"), "Orca: ask_question")
         self.assertIsNone(oficina.tool_label(None))
+
+
+class RoleTests(unittest.TestCase):
+    """Each coworker states its role in its title; Pixtuoid dresses it as that role's class."""
+
+    def basename(self, coworker):
+        return oficina.ntpath.basename(coworker.cwd)
+
+    def home(self, h, fields):
+        h.worktree_fields["folder:punky"] = dict({"path": "C:\\Users\\me\\.orca\\bots\\punky"},
+                                                 **fields)
+        return h.sync([agent("working", SID, "claude", worktreeId="folder:punky")])
+
+    def test_a_bots_home_session_is_the_companion(self):
+        agents = self.home(Harness(), {"bot": "Punky", "botHome": True})
+        self.assertEqual(self.basename(agents[SID]), "punky · companion")
+
+    def test_without_the_flag_the_bots_folder_still_tells(self):
+        agents = self.home(Harness(), {})
+        self.assertEqual(self.basename(agents[SID]), "punky · companion")
+        self.assertTrue(oficina.in_bots_folder("C:/Users/me/.orca/bots/punky/"))
+        self.assertFalse(oficina.in_bots_folder("C:\\work\\bots\\punky"))
+        self.assertFalse(oficina.in_bots_folder("C:\\Users\\me\\.orca\\bots"))
+        self.assertFalse(oficina.in_bots_folder(None))
+
+    def test_a_workspace_a_bot_works_in_is_not_its_home(self):
+        h = Harness()
+        h.worktree_fields["repo::C:\\work\\my-repo"] = {"bot": "Punky", "botHome": None}
+        agents = h.sync([agent("working", SID, "claude", worktreeId="repo::C:\\work\\my-repo")])
+        self.assertEqual(self.basename(agents[SID]), "my-repo · agent")
+
+    def test_the_companion_stays_one_when_it_dispatches(self):
+        h = Harness()
+        h.worktree_fields["folder:punky"] = {"path": "C:\\Users\\me\\.orca\\bots\\punky",
+                                             "botHome": True}
+        agents = h.sync([agent("working", SID, "claude", worktreeId="folder:punky"),
+                         agent("working", KID, "claude")],
+                        [ps_row(SID, children=[]), ps_row(KID, parent=SID, children=[])])
+        self.assertEqual(self.basename(agents[SID]), "punky · companion")
+        self.assertEqual(self.basename(agents[KID]), "worker · work")
+
+    def test_a_worker_that_dispatches_is_an_orchestrator(self):
+        h = Harness()
+        agents = h.sync([agent("working", sid, "claude") for sid in (SID, KID, GRAND)],
+                        [ps_row(SID, children=[]), ps_row(KID, parent=SID, children=[]),
+                         ps_row(GRAND, parent=KID, children=[])])
+        self.assertEqual(self.basename(agents[SID]), "work · orchestrator")
+        self.assertEqual(self.basename(agents[KID]), "orchestrator · work")
+        self.assertEqual(self.basename(agents[GRAND]), "worker · work")
+
+    def test_a_session_that_starts_dispatching_returns_as_an_orchestrator(self):
+        h = Harness()
+        h.sync([agent("working", SID, "claude")], [ps_row(SID, children=[])])
+        before = h.office.agents[SID]
+        self.assertEqual(self.basename(before), "work · agent")
+        agents = h.sync([agent("working", SID, "claude"), agent("working", KID, "claude")],
+                        [ps_row(SID, children=[]), ps_row(KID, parent=SID, children=[])])
+        self.assertEqual(self.basename(agents[SID]), "work · orchestrator")
+        self.assertNotEqual(agents[SID].id, before.id, "Pixtuoid never sees a reused id")
+        self.assertIs(agents[KID].parent, agents[SID])
+        events = h.events()
+        self.assertLess(events.index("SessionEnd"), events.index("SessionStart"))
+        h.sync([agent("working", SID, "claude")], [ps_row(SID, children=[])])
+        self.assertEqual(self.basename(h.office.agents[SID]), "work · orchestrator",
+                         "The role is never taken back")
+        self.assertNotIn("SessionStart", h.events())
 
 
 class FeatureTests(unittest.TestCase):
