@@ -18,6 +18,6 @@ jobs:
         with:
           node-version: '22'
       - name: Test Orca projection, hierarchy and plugin manifest (offline)
-        run: python -B -m unittest -v test_oficina
+        run: python -B -m unittest -v test_oficina test_instalar
       - name: Check the plugin worker parses
         run: node --check plugin/worker.mjs

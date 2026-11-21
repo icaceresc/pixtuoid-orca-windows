@@ -53,10 +53,12 @@ Orca 在这台机器上识别出的每个智能体对应一个角色。子级戴
 git clone https://github.com/icaceresc/pixtuoid-orca-windows.git
 cd pixtuoid-orca-windows
 py -3 instalar.py
-py -3 -m unittest -v test_oficina
+py -3 -m unittest -v test_oficina test_instalar
 ```
 
 `instalar.py` 将 Pixtuoid v0.23.0 下载到克隆目录中，校验其 SHA-256，并连接 Orca 报告的智能体。限制来源：`py -3 instalar.py --sources claude-code codex`。
+
+**自己的构建。** 关闭办公室后，`py -3 instalar.py --local C:\path\to\pixtuoid\target\release` 会安装本地构建中的 `pixtuoid.exe` 和 `pixtuoid-hook.exe`，以及其旁边或其仓库根目录中的 `LICENSE`。`py -3 instalar.py --url https://... --sha256 <64 位十六进制>` 会安装你发布的、与 Pixtuoid Windows zip 结构相同的 zip；SHA-256 为必填。`app/origen.json` 记录已安装的内容：之后不带选项运行 `py -3 instalar.py` 会保留你的构建并给出提示，`py -3 instalar.py --pinned` 则回到 v0.23.0。
 
 **更新。** 本仓库中的每日工作流会查找新的 Pixtuoid 稳定版本，校验其 SHA-256，运行测试，并提出新的版本固定供审阅；它从不自行合并。拉取更新后，关闭办公室并再次运行 `py -3 instalar.py`。
 

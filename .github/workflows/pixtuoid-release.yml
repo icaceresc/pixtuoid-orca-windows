@@ -59,7 +59,7 @@ jobs:
         run: python -B .github/scripts/bump_pixtuoid.py
       - name: Run the tests on the new pin
         if: steps.release.outputs.updated == 'true'
-        run: python -B -m unittest -v test_oficina
+        run: python -B -m unittest -v test_oficina test_instalar
       - name: Open a pull request (never merged automatically)
         if: steps.release.outputs.updated == 'true'
         shell: bash

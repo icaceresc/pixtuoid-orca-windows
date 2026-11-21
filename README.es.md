@@ -53,10 +53,12 @@ Visto en vivo con Pixtuoid v0.23.0 en Orca 1.4.266, o en 1.4.263 donde se indica
 git clone https://github.com/icaceresc/pixtuoid-orca-windows.git
 cd pixtuoid-orca-windows
 py -3 instalar.py
-py -3 -m unittest -v test_oficina
+py -3 -m unittest -v test_oficina test_instalar
 ```
 
 `instalar.py` descarga Pixtuoid v0.23.0 dentro del clon, verifica su SHA-256 y conecta los agentes que informa Orca. Para limitar las fuentes: `py -3 instalar.py --sources claude-code codex`.
+
+**Tu propia compilación.** Con la oficina cerrada, `py -3 instalar.py --local C:\ruta\a\pixtuoid\target\release` instala `pixtuoid.exe` y `pixtuoid-hook.exe` de una compilación local, junto con el `LICENSE` que haya a su lado o en la raíz de su repositorio. `py -3 instalar.py --url https://... --sha256 <64 hex>` instala un zip que publicaste con la misma estructura que el zip de Windows de Pixtuoid; el SHA-256 es obligatorio. `app/origen.json` registra lo instalado: un `py -3 instalar.py` posterior sin opciones mantiene tu compilación y lo avisa, y `py -3 instalar.py --pinned` vuelve a la v0.23.0.
 
 **Actualizaciones.** Un flujo diario de este repositorio busca una nueva versión estable de Pixtuoid, verifica su SHA-256, ejecuta las pruebas y propone el nuevo pin para revisión; nunca lo fusiona por su cuenta. Después de traer una actualización, cierra la oficina y vuelve a ejecutar `py -3 instalar.py`.
 
