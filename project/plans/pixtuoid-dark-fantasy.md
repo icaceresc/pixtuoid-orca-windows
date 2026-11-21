@@ -36,6 +36,11 @@ Agents are adventurers of four original classes (mage, knight, ranger, berserker
 - [x] Slice: release build of 2af25683 installed with `instalar.py --local` (PR #9 workspace); real floating window showed live Orca agents resting in camp (floor 0, 2 idle) and fighting in the dungeon (D1, knight vs spider, mage vs orc), auto-follow and Camp/D1 labels; screenshots in this workspace's scratch/shots (corte-*.png, untracked); office stopped afterwards
 - [x] Campaign 2: vertical slice in the fork: camp floor 0 with real resting agents, one dungeon floor with an active agent fighting a monster, the four classes drawn, the owlbear; built, installed with `instalar.py --local`, real office screenshots and close-ups (steps above)
 - [x] Campaign 3: report sent to Punky (feasibility, screenshots, open decisions as options)
-- [ ] Campaign 3b: owner's approval of the slice (gate: the full rework starts only after Punky sends it)
-- [ ] Campaign 4: full rework (after approval)
+- [x] Campaign 3b: owner approved the slice (2026-11-21) and decided: full rework IN (cover every office remnant in dungeon and camp, camp open-air without windowed walls, walk-out between floors, raven as a real pet, rename cat/dog in code); per-class bodies OUT; class FROM ROLE (Strategic Companion bot session = mage, verified detection only; orchestrator = knight; workers at any depth = berserker; subagents and top-level agents without role = ranger, proposal); tools show a skill name with the real tool, e.g. "Hechizo (Bash)", consistent names for Claude Code, Codex, OpenCode and Antigravity tools and a generic one for unknown tools; monsters only while someone works, empty lairs show bones and a torch, idle agents rest in camp
+- [ ] Rework: role -> class plumbing from the adapter (Punky/bot detection verified against Orca) and B8 walk-out between floors
+- [ ] Rework: skill names with the real tool (footer, tooltip, dashboard); monsters only on engaged lairs (engine); camp open-air north edge
+- [ ] Rework: art: cover every office remnant on dungeon and camp floors; empty lair (bones and torch) and the monster as its own piece
+- [ ] Rework: raven as a real pet; cat/dog renamed to wolf/owlbear in code
+- [ ] Rework: integration branch, release build installed with `instalar.py --local`, real-office screenshots (camp, dungeon with active monsters and empty lairs, classes by role, skill bar)
+- [ ] Rework: report to Punky with the plugin integration ideas (gate: the plugin is built only after approval)
 - [ ] Campaign 5: Orca plugin with the campaign build; propose the integration ideas first (after approval)
