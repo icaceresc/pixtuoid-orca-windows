@@ -203,7 +203,8 @@ class OwnerUrlTests(unittest.TestCase):
 
 class DefaultRunTests(unittest.TestCase):
     def options(self, **chosen):
-        return SimpleNamespace(**dict({"local": None, "url": None, "sha256": None, "pinned": False}, **chosen))
+        return SimpleNamespace(**dict({"local": None, "url": None, "sha256": None, "pinned": False,
+                                       "modo": None}, **chosen))
 
     def test_installed_pin_is_kept_without_downloading(self):
         with Sandbox() as box:
@@ -254,6 +255,94 @@ class DefaultRunTests(unittest.TestCase):
             (box.app / "notes.txt").write_text("not Pixtuoid", encoding="utf-8")
             with self.assertRaisesRegex(RuntimeError, "Muevela"):
                 instalar.install_local(box.build())
+
+
+class ModeTests(unittest.TestCase):
+    """`--modo oficina|dungeon`: which pinned build an install takes, remembered in origen.json."""
+
+    def options(self, **chosen):
+        return DefaultRunTests.options(self, **chosen)
+
+    def dungeon_release(self, box, payload):
+        """A file:// stand-in for the Dungeons & Agents release zip, with its real SHA-256."""
+        archive = box.root / "dungeons-and-agents.zip"
+        archive.write_bytes(payload)
+        return (patch.object(instalar, "DUNGEON_RELEASE", archive.as_uri()),
+                patch.object(instalar, "DUNGEON_SHA256", hashlib.sha256(payload).hexdigest()))
+
+    def test_modo_is_one_of_the_two_offices(self):
+        self.assertEqual(parse("--modo", "dungeon").modo, "dungeon")
+        self.assertIsNone(parse().modo)
+        self.assertIn("invalid choice", parse("--modo", "tavern"))
+
+    def test_dungeon_is_unpinned_until_its_release_and_keeps_the_app(self):
+        self.assertIsNone(instalar.DUNGEON_SHA256, "Placeholder: the real pin lands before the gate")
+        with Sandbox() as box:
+            box.old_app({"kind": "pinned", "modo": "oficina", "sha256": instalar.SHA256})
+            box.serve(b"")
+            with self.assertRaisesRegex(RuntimeError, "--local"):
+                instalar.install_binary(self.options(modo="dungeon"))
+            self.assertEqual(box.downloads, [])
+            self.assertEqual((box.app / "pixtuoid.exe").read_bytes(), b"old")
+
+    def test_dungeon_release_is_downloaded_verified_and_remembered(self):
+        payload = release_zip()
+        with Sandbox() as box:
+            box.old_app({"kind": "pinned", "modo": "oficina", "sha256": instalar.SHA256})
+            url, sha = self.dungeon_release(box, payload)
+            with url, sha:
+                instalar.install_binary(self.options(modo="dungeon"))
+                self.assertEqual((box.app / "pixtuoid.exe").read_text(encoding="utf-8"), "fake pixtuoid.exe")
+                self.assertEqual({k: box.origin()[k] for k in ("kind", "modo", "sha256")},
+                                 {"kind": "pinned", "modo": "dungeon", "sha256": instalar.DUNGEON_SHA256})
+                self.assertEqual(instalar.installed_mode(), "dungeon")
+
+    def test_a_tampered_dungeon_zip_installs_nothing(self):
+        with Sandbox() as box:
+            box.old_app({"kind": "pinned", "modo": "oficina", "sha256": instalar.SHA256})
+            url, _ = self.dungeon_release(box, release_zip())
+            with url, patch.object(instalar, "DUNGEON_SHA256", SHA):
+                with self.assertRaisesRegex(RuntimeError, "SHA-256"):
+                    instalar.install_binary(self.options(modo="dungeon"))
+            self.assertEqual((box.app / "pixtuoid.exe").read_bytes(), b"old")
+
+    def test_plain_run_honours_the_remembered_mode(self):
+        payload = release_zip()
+        with Sandbox() as box:
+            url, sha = self.dungeon_release(box, payload)
+            with url, sha:
+                box.old_app({"kind": "pinned", "modo": "dungeon", "sha256": instalar.DUNGEON_SHA256})
+                box.serve(b"")
+                instalar.install_binary(self.options())
+                self.assertEqual(box.downloads, [], "The remembered dungeon pin is current: nothing to do")
+                self.assertEqual((box.app / "pixtuoid.exe").read_bytes(), b"old")
+
+    def test_switching_back_to_the_office_installs_the_official_pin(self):
+        payload = release_zip()
+        with Sandbox() as box, patch.object(instalar, "SHA256", hashlib.sha256(payload).hexdigest()):
+            box.old_app({"kind": "pinned", "modo": "dungeon", "sha256": "d" * 64})
+            box.serve(payload)
+            instalar.install_binary(self.options(modo="oficina"))
+            self.assertEqual(box.downloads, [instalar.RELEASE])
+            self.assertEqual(box.origin()["modo"], "oficina")
+
+    def test_a_local_dungeon_build_is_recorded_in_its_mode(self):
+        with Sandbox() as box:
+            build = box.build()
+            instalar.install_binary(self.options(local=str(build), modo="dungeon"))
+            self.assertEqual({k: box.origin()[k] for k in ("kind", "modo")}, {"kind": "local", "modo": "dungeon"})
+            # Asking for the mode it is already in keeps the custom build.
+            box.serve(b"")
+            instalar.install_binary(self.options(modo="dungeon"))
+            self.assertEqual(box.downloads, [])
+            self.assertEqual(box.origin()["kind"], "local")
+
+    def test_an_install_made_before_modes_is_the_official_office(self):
+        with Sandbox() as box:
+            box.old_app({"kind": "pinned"})
+            self.assertEqual(instalar.installed_mode(), "oficina")
+            box.app.joinpath(instalar.ORIGIN).unlink()
+            self.assertEqual(instalar.installed_mode(), "oficina")
 
 
 if __name__ == "__main__":
