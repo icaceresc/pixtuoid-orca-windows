@@ -1,4 +1,9 @@
-"""Install the pinned Pixtuoid release, or the owner's own build, in this checkout on Windows."""
+"""Install the office on Windows: official Pixtuoid (oficina) or Dungeons & Agents (dungeon).
+
+Each mode has its own pinned release, checked against its SHA-256; a local build or an
+owner-released zip can stand in for either. The chosen mode is remembered in app/origen.json
+for the next update.
+"""
 import argparse
 import contextlib
 import datetime as dt
@@ -21,6 +26,11 @@ VERSION = "0.23.0"
 ARCHIVE = f"pixtuoid-v{VERSION}-x86_64-pc-windows-msvc.zip"
 SHA256 = "e52205aba4061112f94f40529d920e0346c98c0f4123edeceebee12e80303dad"
 RELEASE = f"https://github.com/pixtuoid/pixtuoid/releases/download/v{VERSION}/{ARCHIVE}"
+DUNGEON_VERSION = "1.0.0"
+DUNGEON_RELEASE = (f"https://github.com/icaceresc/dungeons-and-agents/releases/download/v{DUNGEON_VERSION}/"
+                   f"dungeons-and-agents-v{DUNGEON_VERSION}-x86_64-pc-windows-msvc.zip")
+DUNGEON_SHA256 = "e43457ccb131344ecdc7a6ad4abb6a9a4c54f2507d5ba3b2aa08f6d902ff1283"
+MODES = ("oficina", "dungeon")
 CONFIG = PROFILE / "config" / "pixtuoid" / "config.toml"
 # Marks a data folder this installer made outside a clone, so the plugin may remove it.
 MARKER = HOME / ".pixtuoid-orca-home"
@@ -55,6 +65,17 @@ def installed_origin():
 
 def is_custom(origin):
     return origin is not None and origin.get("kind") != "pinned"
+
+
+def installed_mode():
+    """The mode app/ holds; an install made before modes existed is the official office."""
+    mode = (installed_origin() or {}).get("modo")
+    return mode if mode in MODES else "oficina"
+
+
+def pin_for(mode):
+    """The pinned release (url, sha256) of a mode."""
+    return (DUNGEON_RELEASE, DUNGEON_SHA256) if mode == "dungeon" else (RELEASE, SHA256)
 
 
 def refuse_foreign(current):
@@ -118,23 +139,30 @@ def swap_in(staging, output, origin):
         raise
 
 
-def install_release(force=False):
-    """The pinned upstream release. force replaces a custom build even when it prints the pin."""
+def install_release(mode="oficina", force=False):
+    """A mode's pinned release. force replaces a custom build even when it prints the pin."""
+    url, sha256 = pin_for(mode)
     current = installed_version()
-    if current == f"pixtuoid {VERSION}" and not force:
-        return
+    origin = installed_origin()
+    if current and not force:
+        if origin is None:
+            # Recorded before origen.json: only the official pin's version can tell.
+            if mode == "oficina" and current == f"pixtuoid {VERSION}":
+                return
+        elif origin.get("kind") == "pinned" and origin.get("sha256") == sha256 and installed_mode() == mode:
+            return
     refuse_foreign(current)
     with staging_folder() as staging:
-        archive = staging / ARCHIVE
-        digest = download(RELEASE, archive)
-        if digest != SHA256:
+        archive = staging / "pixtuoid.zip"
+        digest = download(url, archive)
+        if digest != sha256:
             raise RuntimeError("El SHA-256 del binario descargado difiere del publicado en GitHub.")
         output = staging / "app"
         extract(archive, output)
-        swap_in(staging, output, {"kind": "pinned", "source": RELEASE, "sha256": digest})
+        swap_in(staging, output, {"kind": "pinned", "modo": mode, "source": url, "sha256": digest})
 
 
-def install_url(url, sha256):
+def install_url(url, sha256, mode="oficina"):
     """An owner-released zip with upstream's Windows layout, checked against its --sha256."""
     refuse_foreign(installed_version())
     with staging_folder() as staging:
@@ -145,7 +173,7 @@ def install_url(url, sha256):
         output = staging / "app"
         extract(archive, output)
         check_pixtuoid(output)
-        swap_in(staging, output, {"kind": "url", "source": url, "sha256": digest})
+        swap_in(staging, output, {"kind": "url", "modo": mode, "source": url, "sha256": digest})
 
 
 def find_license(folder):
@@ -158,7 +186,7 @@ def find_license(folder):
     return None
 
 
-def install_local(folder):
+def install_local(folder, mode="oficina"):
     """A local build: the two executables of a folder such as target\\release, plus LICENSE."""
     folder = Path(folder).resolve()
     missing = [name for name in EXES if not (folder / name).is_file()]
@@ -177,24 +205,32 @@ def install_local(folder):
         shutil.copy2(license_file, output / "LICENSE")
         check_pixtuoid(output)
         digests = {name: sha256_of(output / name) for name in EXES}
-        swap_in(staging, output, {"kind": "local", "source": str(folder), "sha256": digests})
+        swap_in(staging, output, {"kind": "local", "modo": mode, "source": str(folder), "sha256": digests})
 
 
 def install_binary(options):
-    """Install what the options ask for. A plain run never replaces a custom build silently."""
+    """Install what the options ask for, in the mode asked or the one remembered.
+
+    A plain run, or one asking for the mode already installed, never replaces a custom build
+    silently; asking for the other mode, or --pinned, installs that mode's pinned release.
+    """
+    current = installed_mode()
+    mode = options.modo or current
     if options.local:
-        install_local(options.local)
-        print(f"Instalada la compilacion local de {Path(options.local).resolve()} en {APP.parent}.")
+        install_local(options.local, mode)
+        print(f"Instalada la compilacion local de {Path(options.local).resolve()} ({mode}) en {APP.parent}.")
     elif options.url:
-        install_url(options.url, options.sha256)
-        print(f"Instalado el binario de {options.url} (SHA-256 verificado) en {APP.parent}.")
+        install_url(options.url, options.sha256, mode)
+        print(f"Instalado el binario de {options.url} ({mode}, SHA-256 verificado) en {APP.parent}.")
     else:
         origin = installed_origin()
-        if is_custom(origin) and not options.pinned:
-            print(f"Se mantiene la compilacion propia de {APP.parent} ({origin.get('kind')}: "
-                  f"{origin.get('source', '?')}). Para volver a Pixtuoid v{VERSION}: py -3 instalar.py --pinned")
+        if is_custom(origin) and not options.pinned and mode == current:
+            print(f"Se mantiene la compilacion propia de {APP.parent} ({origin.get('kind')}, {mode}: "
+                  f"{origin.get('source', '?')}). Para volver a la version fijada: py -3 instalar.py --pinned")
             return
-        install_release(force=is_custom(origin))
+        install_release(mode, force=is_custom(origin) or mode != current)
+        name = f"Dungeons & Agents v{DUNGEON_VERSION}" if mode == "dungeon" else f"Pixtuoid v{VERSION}"
+        print(f"Modo {mode}: {name} instalado en {APP.parent}.")
 
 
 def parser_for():
@@ -209,7 +245,11 @@ def parser_for():
                         help="Instalar un zip https del propietario con la misma estructura que el de Pixtuoid "
                              "para Windows (exes y LICENSE en la raiz). Exige --sha256.")
     binary.add_argument("--pinned", action="store_true",
-                        help=f"Volver a Pixtuoid v{VERSION} fijado aunque haya una compilacion propia instalada.")
+                        help="Volver a la version fijada del modo aunque haya una compilacion propia instalada.")
+    parser.add_argument("--modo", choices=MODES,
+                        help=f"oficina: Pixtuoid v{VERSION} oficial. dungeon: Dungeons & Agents (clases, "
+                             "habilidades y clic que abre la sesion en Orca). Se recuerda para las "
+                             "actualizaciones; por defecto, el instalado.")
     parser.add_argument("--sha256", metavar="HEX", help="SHA-256 esperado del zip de --url (64 hexadecimales).")
     return parser
 
