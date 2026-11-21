@@ -25,7 +25,8 @@ originality: original designs only, no characters, art, logos or names from Dark
 - [x] Phase 1: upstream v0.23.0 builds on Windows from the fork: release build 4m48s, `pixtuoid 0.23.0`, pixtuoid-scene tests 1493 passed
 - [x] Phase 1: adapter option to install a local or owner-released binary: `instalar.py --local | --url --sha256 | --pinned`, app/origen.json, tests 58 -> 78, CI green, PR https://github.com/icaceresc/pixtuoid-orca-windows/pull/9 (open, not merged)
 - [x] Phase 1: the built pixtuoid.exe runs the office through the adapter: `instalar.py --local <fork>/target/release` in the PR #9 workspace, office opened and read 7 live Orca agents, then stopped with `oficina.py --stop`
-- [ ] Phase 2: dark fantasy theme, palette pass and one knight in the fork, built and running; screenshots of the office and the knight
-- [ ] Phase 2: report to Punky and wait for the owner's approval of the look
-- [ ] Phase 3: full reskin (all poses, helmets and hoods, furniture, pets, icons)
+- [x] Phase 2: dark fantasy theme, palette pass and one knight in the fork, built and running: fork PR https://github.com/icaceresc/pixtuoid/pull/1 (fantasy/prototype @ 931f106e, base dark-fantasy, open, not merged; theme id `dark-fantasy`, default; 21 material colours retuned; every agent a knight: tabard in B, mail, `knight_helm` with H plume); pixtuoid-scene 1493 passed, clippy clean, gen-art --check ok; installed with `instalar.py --local` and the real office showed 3 live Orca agents as knights; screenshots in this workspace's scratch/shots (fase2-oficina-fantasia.png, fase2-caballeros-primer-plano.png, untracked)
+- [x] Phase 2: report sent to Punky with screenshot paths
+- [ ] Phase 2: owner's approval of the look (gate: phase 3 starts only after Punky sends it)
+- [ ] Phase 3: full reskin (all poses, helmets and hoods, furniture, pets, icons); start from the phase-3 list in fork PR #1's body (window wall, skyline, clouds, floor grid, glass dividers, cooler and neon board, office furniture) and the modern hairstyles kept in gen-art.py as UNWORN_HAIRSTYLES
 - [ ] Phase 4: propose Orca integration ideas, then revive the plugin with the fantasy build
