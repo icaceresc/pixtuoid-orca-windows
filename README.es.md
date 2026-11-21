@@ -21,8 +21,9 @@ Un personaje por cada agente que Orca identifica en este equipo. Los hijos lleva
 
 | En Orca | Nombre en la oficina |
 |---|---|
-| Agente de nivel superior | `cc·my-repo` |
-| Agente que despachó workers | `cc·my-repo · orchestrator` |
+| Sesión propia de un bot de Orca (su Compañero Estratégico) | `cc·punky · companion` |
+| Agente de nivel superior | `cc·my-repo · agent` |
+| Agente que despacha workers, también un worker | `cc·my-repo · orchestrator` |
 | Worker de orquestación, a cualquier profundidad | `cx·worker · my-repo` |
 | Worker de otro proveedor que su padre | `cx·claude worker · my-repo` |
 | Subagente que Orca observa dentro de una sesión | `cc·Explore subagent · my-repo` |
@@ -95,7 +96,7 @@ La ventana flota fuera de Orca, así que puedes dejarla en un segundo monitor. S
 
 - Pixtuoid enlaza un hijo solo con un padre del mismo proveedor. Un worker de otro proveedor se ubica bajo su padre con el prefijo y el color del padre, y su nombre indica su propio proveedor (`cx·claude worker`). En un árbol de Claude Code también el prefijo es el del worker.
 - Pixtuoid no puede dibujar hijos bajo un agente de Antigravity de nivel superior: sus workers aparecen como compañeros separados llamados `worker of antigravity`.
-- El rol es el que muestra Orca cuando el agente aparece por primera vez. Un agente que empieza a despachar después conserva su nombre; sus workers igual aparecen bajo él.
+- Pixtuoid conserva el nombre con que aparece un compañero, así que un agente que empieza a despachar después sale y vuelve como orchestrator. El rol nunca se quita.
 - Orca informa el nombre de la herramienta, no el modelo, el esfuerzo ni el uso de tokens, así que la oficina no muestra modelo, esfuerzo ni medidor de tokens. Nunca se lee la entrada de la herramienta, así que no aparece ningún archivo ni comando junto a ella.
 - Hacer clic en un personaje no enfoca su terminal: Orca no expone el proceso del agente y el enfoque de Pixtuoid en Windows solo cubre su propia integración con Antigravity.
 - La oficina espera de 1,5 a 10 segundos entre lecturas de Orca, más mientras el PC u Orca están ocupados, así que turnos y herramientas muy cortos pueden no verse. Mientras Orca está ocupado, un hijo nuevo puede aparecer un momento antes de ubicarse bajo su padre.
@@ -104,7 +105,7 @@ La ventana flota fuera de Orca, así que puedes dejarla en un segundo monitor. S
 
 ## Privacidad
 
-- La oficina lee solo IDs, enlaces de padre, proveedor, tipo de subagente, estado, nombre de herramienta y carpeta del espacio de trabajo desde `orca worktree ps` (y `orca agent list` como respaldo). Nunca reenvía ni guarda prompts, respuestas ni entradas de herramientas.
+- La oficina lee solo IDs, enlaces de padre, proveedor, tipo de subagente, estado, nombre de herramienta, carpeta del espacio de trabajo y si ese espacio es el hogar de un bot desde `orca worktree ps` (y `orca agent list` como respaldo). Nunca reenvía ni guarda prompts, respuestas ni entradas de herramientas.
 - El único acceso a la red del adaptador es la descarga de la versión fijada de Pixtuoid desde GitHub.
 - La app, el perfil aislado de agentes y los registros quedan en el clon (`app/`, `perfil/`, `actividad/`). Para nombrar el proveedor de un worker, la oficina escribe una ficha de una línea (nombre y carpeta) en el perfil aislado y la borra cuando el worker se va o la oficina se cierra.
 - No se modifica la configuración global de los agentes ni de Orca.

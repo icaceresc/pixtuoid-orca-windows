@@ -21,8 +21,9 @@ One character per agent that Orca identifies on this machine. Children wear a ca
 
 | In Orca | Name in the office |
 |---|---|
-| Top-level agent | `cc·my-repo` |
-| Agent that dispatched workers | `cc·my-repo · orchestrator` |
+| An Orca bot's own session (its Strategic Companion) | `cc·punky · companion` |
+| Top-level agent | `cc·my-repo · agent` |
+| Agent that dispatches workers, a worker included | `cc·my-repo · orchestrator` |
 | Orchestration worker, any depth | `cx·worker · my-repo` |
 | Worker of another provider than its parent | `cx·claude worker · my-repo` |
 | Subagent Orca observes inside a session | `cc·Explore subagent · my-repo` |
@@ -95,7 +96,7 @@ The window floats outside Orca, so you can keep it on a second monitor. Only one
 
 - Pixtuoid links a child only to a parent of the same provider. A worker of another provider sits under its parent with the parent's prefix and color, and its name says its own provider (`cx·claude worker`). In a Claude Code tree the prefix too is the worker's own.
 - Pixtuoid cannot draw children under a top-level Antigravity agent: its workers appear as separate coworkers named `worker of antigravity`.
-- The role is the one Orca shows when the agent first appears. An agent that starts dispatching later keeps its name; its workers still appear under it.
+- Pixtuoid keeps the name a coworker first appears with, so an agent that starts dispatching later leaves and comes back as an orchestrator. The role is never taken back.
 - Orca reports a tool name, not model, effort or token use, so the office shows no model, effort or token meter. The tool's input is never read, so no file or command appears next to it.
 - Clicking a character does not focus its terminal: Orca exposes no agent process, and Pixtuoid's Windows focus covers only its own Antigravity integration.
 - The office waits 1.5 to 10 seconds between reads of Orca, longer while the PC or Orca is busy, so very short turns and tools may be missed. While Orca is busy, a new child may appear for a moment before it moves under its parent.
@@ -104,7 +105,7 @@ The window floats outside Orca, so you can keep it on a second monitor. Only one
 
 ## Privacy
 
-- The office reads only IDs, parent links, provider, subagent type, state, tool name and workspace folder from `orca worktree ps` (and `orca agent list` as a fallback). Prompts, replies and tool inputs are never forwarded or stored.
+- The office reads only IDs, parent links, provider, subagent type, state, tool name, workspace folder and whether the workspace is a bot's home from `orca worktree ps` (and `orca agent list` as a fallback). Prompts, replies and tool inputs are never forwarded or stored.
 - The adapter's only network access is the download of the pinned Pixtuoid release from GitHub.
 - The app, the isolated agent profile and the logs stay in the clone (`app/`, `perfil/`, `actividad/`). To name a worker's provider, the office writes a one-line card (name and folder) to the isolated profile and deletes it when the worker leaves or the office closes.
 - Global agent and Orca settings are not modified.

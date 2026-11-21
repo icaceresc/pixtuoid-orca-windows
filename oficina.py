@@ -489,6 +489,29 @@ def placeholder():
     return Placeholder()
 
 
+def in_bots_folder(path):
+    """Whether `path` is an Orca bot's home folder: `orca bot list` keeps each bot in
+    `<home>/.orca/bots/<name>`."""
+    if not isinstance(path, str) or not path:
+        return False
+    parts = [part.lower() for part in ntpath.normpath(path).rstrip("\\").split("\\")]
+    return len(parts) >= 3 and parts[-3:-1] == [".orca", "bots"]
+
+
+def bot_home(worktree):
+    """Whether an Orca workspace is a bot's own home, where that bot (the owner's Strategic
+    Companion) chats.
+
+    Orca 1.4.265's `worktree ps` names the bot every workspace it works in is under (`bot`),
+    and marks only the bot's own folder `botHome: true`: a workspace the bot created is
+    under it but not its home, so its agents keep their own roles. Without the field (an
+    older Orca) the bot's folder still tells.
+    """
+    if "botHome" in worktree:
+        return worktree.get("botHome") is True
+    return in_bots_folder(worktree.get("path"))
+
+
 def child_rows(row):
     """Real subagents Orca observed in one agent row of `orca worktree ps`.
 
@@ -557,11 +580,13 @@ class Office:
         except (OSError, ValueError, KeyError, TypeError, AttributeError, RuntimeError,
                 subprocess.SubprocessError):
             ps, worktrees = None, []
-        pane_session, parents, children, paths = {}, {}, {}, {}
+        pane_session, parents, children, paths, homes = {}, {}, {}, {}, set()
         ps_rows = []
         for worktree in worktrees:
             if worktree.get("worktreeId") and worktree.get("path"):
                 paths[worktree["worktreeId"]] = worktree["path"]
+            if worktree.get("worktreeId") and bot_home(worktree):
+                homes.add(worktree["worktreeId"])
             for row in worktree.get("agents") or []:
                 if isinstance(row, dict) and isinstance(row.get("orcaSessionId"), str) and row["orcaSessionId"]:
                     ps_rows.append(dict(row, agent=row.get("agentType"), worktreeId=worktree.get("worktreeId")))
@@ -584,10 +609,33 @@ class Office:
             if snapshot.get("truncated"):
                 raise RuntimeError("Orca returned a truncated session list")
             agents = snapshot["agents"]
-        return agents, parents, children, paths
+        return agents, parents, children, paths, homes
+
+    def companion(self, row, homes, ps_paths):
+        """Whether `row` is a bot's own session: Orca marks its workspace the bot's home, or,
+        when `worktree ps` could not say, the workspace is a bot's folder."""
+        worktree = row.get("worktreeId")
+        if worktree in homes:
+            return True
+        return worktree not in ps_paths and in_bots_folder(str(self.cwd_for(row, ps_paths)))
+
+    def role_for(self, sid, row, parent, parents, rows, dispatchers, homes, ps_paths):
+        """The role a top-level coworker or worker states in its title, which Pixtuoid reads
+        as its class: a bot's own session is the companion, one that dispatches workers an
+        orchestrator (dispatching is the role that matters, a dispatched worker's included),
+        another dispatched one a worker, and any other top-level session an agent."""
+        if self.companion(row, homes, ps_paths):
+            return "companion"
+        if sid in dispatchers:
+            return "orchestrator"
+        if parents.get(sid) in rows:
+            if parent is None or self.linked(parent):
+                return "worker"
+            return f"worker of {NAMES[parent.provider]}"
+        return "agent"
 
     def sync(self):
-        agents, parents, children, ps_paths = self.read_orca()
+        agents, parents, children, ps_paths, homes = self.read_orca()
         rows = {row["orcaSessionId"]: row for row in agents
                 if isinstance(row.get("orcaSessionId"), str) and row["orcaSessionId"]
                 and row.get("agent") in SOURCES and row.get("state") in ACTIVE | {"done"}}
@@ -607,17 +655,20 @@ class Office:
             if agent is None and state == "done":
                 continue
             parent = self.agents.get(parents.get(sid))
+            role = self.role_for(sid, row, parent, parents, rows, dispatchers, homes, ps_paths)
             if agent is not None and parent is not None and self.linked(parent) is not agent.parent \
                     and agent not in self.lineage(parent):
                 # First seen while `worktree ps` was unavailable: move it under the
                 # dispatcher Orca now reports. A missing link never demotes a child.
                 self.close(agent)
                 agent = None
+            if agent is not None and role == "orchestrator" and agent.role not in {"orchestrator",
+                                                                                 "companion"}:
+                # It has started dispatching. Pixtuoid keeps the title a coworker arrived
+                # with, so it returns as an orchestrator; the role is never taken back.
+                self.close(agent)
+                agent = None
             if agent is None:
-                if parents.get(sid) in rows:
-                    role = "worker" if self.linked(parent) else                         f"worker of {NAMES[parent.provider]}" if parent else "worker"
-                else:
-                    role = "orchestrator" if sid in dispatchers else None
                 agent = self.admit(sid, SOURCES[row["agent"]], self.cwd_for(row, ps_paths), parent,
                                    role=role)
                 if agent is None:

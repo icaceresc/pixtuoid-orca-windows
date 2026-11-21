@@ -21,8 +21,9 @@ Orca 在这台机器上识别出的每个智能体对应一个角色。子级戴
 
 | 在 Orca 中 | 在办公室中的名称 |
 |---|---|
-| 顶层智能体 | `cc·my-repo` |
-| 派发了 worker 的智能体 | `cc·my-repo · orchestrator` |
+| Orca 机器人自己的会话（其 Strategic Companion） | `cc·punky · companion` |
+| 顶层智能体 | `cc·my-repo · agent` |
+| 派发 worker 的智能体（包括 worker 本身） | `cc·my-repo · orchestrator` |
 | 编排 worker（任意层级） | `cx·worker · my-repo` |
 | 与父级提供方不同的 worker | `cx·claude worker · my-repo` |
 | Orca 在会话中观察到的子智能体 | `cc·Explore subagent · my-repo` |
@@ -95,7 +96,7 @@ Orca 插件（v2.0.0）已暂停：它仍可安装并打开办公室，但没有
 
 - Pixtuoid 只会把子级关联到同一提供方的父级。其他提供方的 worker 位于父级之下，使用父级的前缀和颜色，其名称写明它自己的提供方（`cx·claude worker`）。在 Claude Code 树中，前缀也是 worker 自己的。
 - Pixtuoid 无法在顶层 Antigravity 智能体下绘制子级：它的 worker 显示为名为 `worker of antigravity` 的独立同事。
-- 角色是智能体首次出现时 Orca 显示的角色。之后才开始派发的智能体保留原名称；它的 worker 仍显示在它之下。
+- Pixtuoid 保留同事首次出现时的名称，因此之后才开始派发的智能体会先离开，再以 orchestrator 身份回来。角色不会被收回。
 - Orca 只报告工具名称，不报告模型、推理强度或 token 用量，因此办公室不显示模型、推理强度或 token 计量。从不读取工具的输入，因此旁边不会出现文件或命令。
 - 点击角色不会聚焦其终端：Orca 不公开智能体进程，而 Pixtuoid 在 Windows 上的聚焦只支持它自己的 Antigravity 集成。
 - 办公室在两次读取 Orca 之间等待 1.5 到 10 秒，电脑或 Orca 繁忙时更久，因此可能漏掉非常短的轮次和工具。Orca 繁忙时，新的子级可能会先短暂出现，再移到其父级之下。
@@ -104,7 +105,7 @@ Orca 插件（v2.0.0）已暂停：它仍可安装并打开办公室，但没有
 
 ## 隐私
 
-- 办公室只从 `orca worktree ps`（以及作为后备的 `orca agent list`）读取 ID、父级链接、提供方、子智能体类型、状态、工具名称和工作区文件夹。提示词、回复和工具输入从不转发或存储。
+- 办公室只从 `orca worktree ps`（以及作为后备的 `orca agent list`）读取 ID、父级链接、提供方、子智能体类型、状态、工具名称、工作区文件夹以及该工作区是否为机器人的主目录。提示词、回复和工具输入从不转发或存储。
 - 适配器唯一的网络访问是从 GitHub 下载固定版本的 Pixtuoid。
 - 应用、隔离的智能体配置和日志都留在克隆目录中（`app/`、`perfil/`、`actividad/`）。为了标明 worker 的提供方，办公室会在隔离配置中写入一行卡片（名称和文件夹），并在 worker 离开或办公室关闭时删除它。
 - 不修改智能体和 Orca 的全局设置。
