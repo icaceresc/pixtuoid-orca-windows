@@ -24,7 +24,7 @@ originality: original designs only, no characters, art, logos or names from Dark
 - [x] Phase 1: Rust toolchain and MSVC Build Tools installed: rustup 1.29.3, rustc/cargo 1.99.1, VS Build Tools 17.14 VCTools (winget, no UAC prompt)
 - [x] Phase 1: upstream v0.23.0 builds on Windows from the fork: release build 4m48s, `pixtuoid 0.23.0`, pixtuoid-scene tests 1493 passed
 - [x] Phase 1: adapter option to install a local or owner-released binary: `instalar.py --local | --url --sha256 | --pinned`, app/origen.json, tests 58 -> 78, CI green, PR https://github.com/icaceresc/pixtuoid-orca-windows/pull/9 (open, not merged)
-- [x] Phase 1: the built pixtuoid.exe runs the office through the adapter: `instalar.py --local <fork>	argetelease` in the PR #9 workspace, office opened and read 7 live Orca agents, then stopped with `oficina.py --stop`
+- [x] Phase 1: the built pixtuoid.exe runs the office through the adapter: `instalar.py --local <fork>/target/release` in the PR #9 workspace, office opened and read 7 live Orca agents, then stopped with `oficina.py --stop`
 - [ ] Phase 2: dark fantasy theme, palette pass and one knight in the fork, built and running; screenshots of the office and the knight
 - [ ] Phase 2: report to Punky and wait for the owner's approval of the look
 - [ ] Phase 3: full reskin (all poses, helmets and hoods, furniture, pets, icons)
