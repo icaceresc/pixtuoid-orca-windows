@@ -1,3 +1,3 @@
 # Project context
 
-active_plan: none
+active_plan: project/plans/pixtuoid-dark-fantasy.md
