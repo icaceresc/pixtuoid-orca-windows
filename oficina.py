@@ -21,6 +21,15 @@ APP = HOME / "app" / "pixtuoid.exe"
 SHIM = APP.with_name("pixtuoid-hook.exe")
 PROFILE = HOME / "perfil"
 RUN = HOME / "actividad"
+# What the office and the Orca plugin's worker tell each other: the worker pulses on every
+# Orca agent event and opens the session a click names; the office writes those requests.
+CANAL = HOME / "canal"
+# Dungeons & Agents appends a line per click on a coworker here (its PIXTUOID_FOCUS_FEED).
+FOCUS_FEED = CANAL / "pixtuoid-foco.jsonl"
+FOCUS_REQUEST = CANAL / "orca-foco.json"
+PULSE = CANAL / "orca-pulso.json"
+# Present while an office runs, so the worker pulses and notifies only then.
+OPEN_MARK = CANAL / "oficina.json"
 SOURCES = {"claude": "claude-code", "codex": "codex", "antigravity": "antigravity",
            "opencode": "opencode", "opencode2": "opencode"}
 ACTIVE = {"working", "waiting", "blocked"}
@@ -28,6 +37,14 @@ ACTIVE = {"working", "waiting", "blocked"}
 # reads Orca once per cycle and waits at least twice as long as that read took.
 POLL_SECONDS = 1.5
 MAX_POLL_SECONDS = 10
+# Run from the Orca plugin, its worker pulses on every agent event, so a timed read only
+# catches what no event reports: subagents and workers coming and going under a busy agent.
+EVENT_POLL_BUSY = 6
+EVENT_POLL_IDLE = 30
+# A pulse waits this long for the rest of its burst, and never reads sooner than this
+# after the last read ended.
+EVENT_SETTLE = 0.3
+EVENT_GAP = 1.0
 # A busy PC can take many seconds to start the CLI; killing it early only wastes that work.
 ORCA_TIMEOUT = 30
 # The newest Orca this adapter was verified against. A newer Orca most likely still works:
@@ -44,7 +61,7 @@ def office_env(pipe=None):
                OPENCODE_CONFIG_DIR=str(PROFILE / "opencode"), XDG_CONFIG_HOME=str(PROFILE / "config"),
                XDG_STATE_HOME=str(PROFILE / "estado"), XDG_DATA_HOME=str(PROFILE / "datos"),
                TEMP=str(PROFILE / "temporal"), TMP=str(PROFILE / "temporal"), PIXTUOID_HOOK=str(SHIM),
-               WGPU_BACKEND="dx12")
+               WGPU_BACKEND="dx12", PIXTUOID_FOCUS_FEED=str(FOCUS_FEED))
     if pipe:
         env["PIXTUOID_SOCKET"] = pipe
     else:
@@ -52,7 +69,18 @@ def office_env(pipe=None):
     env.pop("PIXTUOID_LOG", None)
     return env
 
+class CliCalls:
+    """Orca CLI calls made, so the office can log how many it makes a minute."""
+
+    def __init__(self):
+        self.total = 0
+
+
+CLI_CALLS = CliCalls()
+
+
 def orca_json(orca, *args):
+    CLI_CALLS.total += 1
     response = subprocess.run([orca, *args, "--environment", "local", "--json"],
                               stdin=subprocess.DEVNULL, capture_output=True, timeout=ORCA_TIMEOUT,
                               creationflags=NO_WINDOW)
@@ -130,11 +158,27 @@ def clean_text(text, limit=40):
     return " ".join(text.split())[:limit].strip(" .")
 
 
-def tool_label(name):
+# Shell tools of the agents Orca runs. When one runs the Orca CLI the office shows the tool
+# "Orca" (Dungeons & Agents casts it as a spell); only that verdict leaves the office.
+SHELL_TOOLS = {"bash", "powershell", "shell", "exec_command", "local_shell", "run_shell_command",
+               "run_command"}
+# `orca` (or orca.exe / orca.cmd, bare or by path) followed by one of its top-level commands
+# (`orca --help`), so a path or a word that merely says orca is not a call.
+ORCA_COMMAND = re.compile(
+    r"(?:^|[\s;&|(`])[\"']?(?:[^\s;&|(`\"']*[\\/])?orca(?:\.exe|\.cmd)?[\"']?\s+"
+    r"(?:agent|agent-context|artifacts|account|automations|bot|calendar|chat|claude-teams|contacts|"
+    r"diagnostics|docs|drive|environment|file|gmail|google|host|open|orchestration|plugin|ports|"
+    r"project|reference|repo|search|serve|sheets|skills|slack|status|terminal|vm|workspace|"
+    r"worktree)\b")
+
+
+def tool_label(name, command=None):
     """The name Pixtuoid shows for Orca's current tool: its name only, never its input."""
     name = clean_text(name)
     if not name:
         return None
+    if name.lower() in SHELL_TOOLS and isinstance(command, str) and ORCA_COMMAND.search(command):
+        return "Orca"
     return f"Orca: {name}" if name.lower() in RESERVED_TOOLS else name
 
 
@@ -550,6 +594,8 @@ class Office:
         self.agents = {}
         self.generations = {}
         self.paths = {}
+        # Each Orca session's pane, which the plugin's worker knows from Orca's events.
+        self.panes = {}
 
     def cwd_for(self, row, ps_paths):
         worktree = row.get("worktreeId")
@@ -646,6 +692,7 @@ class Office:
             return 0 if parent not in rows or hops > 8 else 1 + rank(parent, hops + 1)
 
         dispatchers = {parents[sid] for sid in rows if sid in parents}
+        self.panes = {sid: row.get("paneKey") for sid, row in rows.items()}
         seen = set()
         for sid in sorted(rows, key=rank):
             row = rows[sid]
@@ -674,7 +721,7 @@ class Office:
                 if agent is None:
                     continue
             seen.add(sid)
-            self.move(agent, state, tool_label(row.get("toolName")))
+            self.move(agent, state, tool_label(row.get("toolName"), row.get("toolInput")))
             found = children.get(sid)
             if found is None:
                 # Orca cannot vouch for this row's subagents now: keep them as they were.
@@ -704,6 +751,21 @@ class Office:
         for agent in list(self.agents.values()):
             if now - agent.sent_at > HEARTBEAT_SECONDS:
                 agent.heartbeat(self.env)
+
+    def busy(self):
+        """Whether an agent is working, so subagents may come and go between events."""
+        return any(agent.state == "working" for agent in self.agents.values())
+
+    def focus_target(self, source, session_id):
+        """The Orca session a click on the coworker Pixtuoid keys by (source, session_id) opens:
+        its own, or for a subagent the session it runs in. None when no coworker matches."""
+        for agent in self.agents.values():
+            if agent.source == source and session_id in (agent.session, agent.id):
+                while agent.key.startswith("child:") and agent.owner is not None:
+                    agent = agent.owner
+                return {"orcaSessionId": agent.key, "paneKey": self.panes.get(agent.key),
+                        "path": agent.workdir}
+        return None
 
     @staticmethod
     def linked(parent):
@@ -754,6 +816,11 @@ def kernel32():
     kernel.SetPriorityClass.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
     kernel.WaitForSingleObject.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
     kernel.WaitForSingleObject.restype = ctypes.c_uint32
+    kernel.WaitForMultipleObjects.argtypes = [ctypes.c_uint32, ctypes.POINTER(ctypes.c_void_p),
+                                              ctypes.c_bool, ctypes.c_uint32]
+    kernel.WaitForMultipleObjects.restype = ctypes.c_uint32
+    kernel.FindNextChangeNotification.argtypes = [ctypes.c_void_p]
+    kernel.FindCloseChangeNotification.argtypes = [ctypes.c_void_p]
     return kernel
 
 def names():
@@ -832,9 +899,76 @@ def orca_version_notice(orca):
             "with. It should keep working; if agents look wrong, check "
             "github.com/icaceresc/pixtuoid-orca-windows for an update.")
 
-def poll_wait(seconds_taken, failed=False):
-    """Seconds to wait before the next read: at least twice what the last read took."""
+def poll_wait(seconds_taken, failed=False, events=False, busy=False):
+    """Seconds to wait before the next timed read: at least twice what the last read took.
+
+    With Orca's events (`events`) a pulse wakes the office on every agent change, so the
+    timer only waits for what no event reports, longer while no agent is working.
+    """
+    if events and not failed:
+        return max(EVENT_POLL_BUSY if busy else EVENT_POLL_IDLE, 2 * seconds_taken)
     return min(MAX_POLL_SECONDS, max(3.0 if failed else POLL_SECONDS, 2 * seconds_taken))
+
+
+def write_json(path, value):
+    """Replace `path` whole, so its reader never sees half a request."""
+    partial = path.with_name(path.name + ".tmp")
+    partial.write_text(json.dumps(value) + "\n", encoding="utf-8")
+    os.replace(partial, path)
+
+
+class FocusFeed:
+    """The clicks Dungeons & Agents appends to FOCUS_FEED, each whole line once."""
+
+    def __init__(self, path):
+        self.path, self.offset, self.partial = path, 0, b""
+
+    def read_new(self):
+        try:
+            with self.path.open("rb") as feed:
+                feed.seek(self.offset)
+                data = feed.read()
+        except OSError:
+            return []
+        self.offset += len(data)
+        *lines, self.partial = (self.partial + data).split(b"\n")
+        clicks = []
+        for line in lines:
+            try:
+                click = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(click, dict) and isinstance(click.get("source"), str) \
+                    and isinstance(click.get("session_id"), str):
+                clicks.append({"source": click["source"], "session_id": click["session_id"]})
+        return clicks
+
+
+class Pulse:
+    """The worker's pulse file: whether Orca reported an agent change since the last look."""
+
+    def __init__(self, path):
+        self.path, self.seen = path, self.read()
+
+    def read(self):
+        try:
+            return self.path.stat().st_mtime_ns
+        except OSError:
+            return None
+
+    def changed(self):
+        current = self.read()
+        changed, self.seen = current != self.seen, current
+        return changed
+
+
+def canal_watch(kernel):
+    """A handle signalled when a file in CANAL is written, renamed or created; None if Windows
+    cannot watch it (the timer still reads Orca)."""
+    kernel.FindFirstChangeNotificationW.restype = ctypes.c_void_p
+    handle = kernel.FindFirstChangeNotificationW(ctypes.c_wchar_p(str(CANAL)), False,
+                                                 0x1 | 0x10)  # FILE_NAME | LAST_WRITE
+    return None if handle in (None, ctypes.c_void_p(-1).value) else handle
 
 def main():
     if "--stop" in sys.argv[1:]:
@@ -864,6 +998,10 @@ def main():
         raise ctypes.WinError(ctypes.get_last_error())
 
     RUN.mkdir(parents=True, exist_ok=True)
+    CANAL.mkdir(parents=True, exist_ok=True)
+    for stale in (FOCUS_FEED, FOCUS_REQUEST):
+        stale.unlink(missing_ok=True)  # a click of a previous run opens nothing now
+    write_json(OPEN_MARK, {"pid": os.getpid()})
     pipe = rf"\\.\pipe\pixtuoid-orca-{uuid.uuid4().hex}"
     trace = PROFILE / "codex" / "sessions"
     trace.mkdir(parents=True, exist_ok=True)
@@ -881,7 +1019,7 @@ def main():
             log.write(json.dumps(entry) + "\n")
         results = (RUN / "pixtuoid-estados.txt").open("w", encoding="utf-8") if audit else None
         window_log = (RUN / "pixtuoid-ventana.txt").open("w", encoding="utf-8")
-        headless = office = None
+        headless = office = watch = None
         try:
             if audit:
                 headless = subprocess.Popen([APP, "run", "--headless"], cwd=HOME, env=env,
@@ -906,26 +1044,49 @@ def main():
                 threading.Thread(target=ctypes.windll.user32.MessageBoxW,
                                  args=(0, notice, "Pixtuoid · Orca", 0x40 | 0x10000), daemon=True).start()
             office_state = Office(orca, env, trace, record, configured)
-            failed = False
+            # The Orca plugin's worker sets it when it pulses on Orca's agent events.
+            events = os.environ.get("PIXTUOID_ORCA_EVENTS") == "1"
+            watch = canal_watch(kernel)
+            handles = (ctypes.c_void_p * 2)(stop, watch)
+            feed, pulse = FocusFeed(FOCUS_FEED), Pulse(PULSE)
+            failed, next_read, read_ended = False, 0.0, 0.0
+            counted_at, counted = time.monotonic(), CLI_CALLS.total
             while office.poll() is None:
                 started = time.monotonic()
-                try:
-                    office_state.sync()
-                    if failed:
-                        record("orca-reconnected")
-                    failed = False
-                except (OSError, ValueError, KeyError, TypeError, AttributeError, RuntimeError,
-                        subprocess.SubprocessError) as error:
-                    if not failed:
-                        record(f"orca-sync-error:{type(error).__name__}")
-                    failed = True
-                taken = time.monotonic() - started
-                if taken > 5:
-                    record(f"orca-slow-read:{taken:.0f}s")
-                wait = int(1000 * poll_wait(taken, failed))
-                if kernel.WaitForSingleObject(stop, wait) == 0:
+                if started >= next_read:
+                    try:
+                        office_state.sync()
+                        if failed:
+                            record("orca-reconnected")
+                        failed = False
+                    except (OSError, ValueError, KeyError, TypeError, AttributeError, RuntimeError,
+                            subprocess.SubprocessError) as error:
+                        if not failed:
+                            record(f"orca-sync-error:{type(error).__name__}")
+                        failed = True
+                    read_ended = time.monotonic()
+                    taken = read_ended - started
+                    if taken > 5:
+                        record(f"orca-slow-read:{taken:.0f}s")
+                    next_read = read_ended + poll_wait(taken, failed, events, office_state.busy())
+                if started - counted_at >= 60:
+                    record(f"orca-cli-calls:{CLI_CALLS.total - counted} in {started - counted_at:.0f}s")
+                    counted_at, counted = started, CLI_CALLS.total
+                wait = max(0, int(1000 * (next_read - time.monotonic())))
+                woke = kernel.WaitForMultipleObjects(2 if watch else 1, handles, False, wait)
+                if woke == 0:
                     record("stop-requested")
                     close_window(office)
+                elif woke == 1:
+                    kernel.FindNextChangeNotification(watch)
+                    for click in feed.read_new():
+                        target = office_state.focus_target(click["source"], click["session_id"])
+                        record("focus" if target else "focus-unknown")
+                        if target:
+                            write_json(FOCUS_REQUEST, dict(target, seq=time.time_ns()))
+                    if pulse.changed():
+                        next_read = min(next_read, max(time.monotonic() + EVENT_SETTLE,
+                                                       read_ended + EVENT_GAP))
             record(f"office-exit:{office.returncode}")
         finally:
             if office and office.poll() is None:
@@ -940,6 +1101,12 @@ def main():
             if results:
                 results.close()
             window_log.close()
+            try:
+                OPEN_MARK.unlink(missing_ok=True)
+            except OSError:
+                pass
+            if watch:
+                kernel.FindCloseChangeNotification(watch)
             kernel.CloseHandle(stop)
             kernel.CloseHandle(mutex)
 

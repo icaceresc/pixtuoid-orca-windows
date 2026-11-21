@@ -2,9 +2,9 @@
   "$schema": "https://orca.dev/schemas/orca-plugin.json",
   "manifestVersion": 2,
   "id": "pixtuoid-office",
-  "name": "Pixtuoid Office (unofficial)",
-  "version": "2.0.0",
-  "description": "Opens a floating pixel-art office on Windows where your local Orca agents, their orchestrated workers and their subagents appear as coworkers.",
+  "name": "Pixtuoid para Orca",
+  "version": "3.0.0",
+  "description": "Opens a floating pixel-art office on Windows where your Orca agents, their workers and subagents appear as coworkers: the official Pixtuoid office, or Dungeons & Agents, where clicking an adventurer opens its session in Orca.",
   "author": {
     "name": "icaceresc",
     "url": "https://github.com/icaceresc"
@@ -13,7 +13,7 @@
   "homepage": "https://github.com/icaceresc/pixtuoid-orca-windows",
   "license": "MIT",
   "engines": {
-    "orca": ">=1.4.263"
+    "orca": ">=1.4.265"
   },
   "execution": "trusted-worker",
   "main": "plugin/worker.mjs",
@@ -39,10 +39,45 @@
         "title": "Pixtuoid: Install or update the office app"
       },
       {
+        "id": "pixtuoid.useOffice",
+        "title": "Pixtuoid: Use the official Pixtuoid office"
+      },
+      {
+        "id": "pixtuoid.useDungeon",
+        "title": "Pixtuoid: Use Dungeons & Agents"
+      },
+      {
         "id": "pixtuoid.removeData",
         "title": "Pixtuoid: Remove downloaded app and local data"
       }
+    ],
+    "events": [
+      {
+        "on": "agent.status.changed"
+      }
+    ],
+    "statusBarItems": [
+      {
+        "id": "office",
+        "text": "Pixtuoid",
+        "icon": "bot",
+        "tooltip": "Open the Pixtuoid office",
+        "command": "pixtuoid.open"
+      }
     ]
   },
-  "capabilities": []
+  "capabilities": [
+    {
+      "kind": "agent:read"
+    },
+    {
+      "kind": "workspace:read"
+    },
+    {
+      "kind": "workspace:write"
+    },
+    {
+      "kind": "notifications:show"
+    }
+  ]
 }

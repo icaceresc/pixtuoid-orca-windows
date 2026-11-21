@@ -1,4 +1,5 @@
 """Regression tests for the read-only Orca projection (no Orca or Pixtuoid required)."""
+import json
 import sys
 import tempfile
 import unittest
@@ -389,10 +390,27 @@ class PluginManifestTests(unittest.TestCase):
         self.manifest = json.loads((root / "orca-plugin.json").read_text(encoding="utf-8"))
 
     def test_least_privilege(self):
-        self.assertEqual(self.manifest["capabilities"], [])
-        self.assertNotIn("events", self.manifest["contributes"])
+        # agent:read hears agent events; workspace:read finds a chat's workspace by its folder;
+        # workspace:write shows that workspace or focuses a terminal; notifications:show says
+        # when an agent needs you. Nothing reads or types into a terminal.
+        self.assertEqual([c["kind"] for c in self.manifest["capabilities"]],
+                         ["agent:read", "workspace:read", "workspace:write", "notifications:show"])
+        self.assertEqual(self.manifest["contributes"]["events"], [{"on": "agent.status.changed"}])
         self.assertNotIn("hooks", self.manifest["contributes"])
         self.assertNotIn("publisher", self.manifest)
+
+    def test_status_bar_item_opens_the_office(self):
+        item, = self.manifest["contributes"]["statusBarItems"]
+        self.assertEqual(item["command"], "pixtuoid.open")
+        worker = (self.root / self.manifest["main"]).read_text(encoding="utf-8")
+        self.assertIn(f"id: '{item['id']}'", worker)
+
+    def test_the_worker_writes_what_the_office_reads(self):
+        worker = (self.root / self.manifest["main"]).read_text(encoding="utf-8")
+        for name in (oficina.FOCUS_REQUEST.name, oficina.PULSE.name, oficina.OPEN_MARK.name):
+            self.assertIn(f"'{name}'", worker)
+        self.assertIn(f"join(HOME, '{oficina.CANAL.name}')", worker)
+        self.assertIn("PIXTUOID_ORCA_EVENTS: '1'", worker)
 
     def test_every_command_is_registered_by_the_worker(self):
         worker = (self.root / self.manifest["main"]).read_text(encoding="utf-8")
@@ -751,6 +769,116 @@ class ReleaseCheckTests(unittest.TestCase):
         # Verified with `gh api repos/pixtuoid/pixtuoid/releases/latest` on 2026-11-20.
         self.assertIn('SHA256 = "e52205aba4061112f94f40529d920e0346c98c0f4123edeceebee12e80303dad"',
                       self.installer)
+
+    def test_the_bump_leaves_the_dungeon_pin_alone(self):
+        text = self.bump.bump(self.installer, "9.1.0", "a" * 64)
+        self.assertIn("DUNGEON_SHA256 = None", text)
+
+
+class OrcaToolTests(unittest.TestCase):
+    """An agent running the Orca CLI shows the tool "Orca" (Dungeons & Agents casts it as a spell)."""
+
+    def test_a_shell_call_of_the_orca_cli_is_the_orca_tool(self):
+        for command in ("orca worktree ps --json", "cd C:/x && orca agent list",
+                        '"C:/Program Files/Orca/bin/orca.exe" terminal send --terminal t',
+                        "C:\\Orca\\orca.cmd orchestration check"):
+            self.assertEqual(oficina.tool_label("Bash", command), "Orca", command)
+        self.assertEqual(oficina.tool_label("exec_command", "orca plugin list"), "Orca")
+
+    def test_anything_else_keeps_its_own_name(self):
+        for name, command in (("Bash", "cd ~/orca && ls"), ("Bash", "git log orca"),
+                              ("Bash", 'echo "orca rocks"'), ("Edit", "orca worktree ps"),
+                              ("Bash", None)):
+            self.assertEqual(oficina.tool_label(name, command), name, command)
+
+    def test_the_office_shows_it_without_the_command(self):
+        h = Harness()
+        secret = "orca terminal send --terminal t --text private"
+        h.sync([agent("working", SID, "claude")], [ps_row(SID, children=[], toolName="Bash", toolInput=secret)])
+        start = next(p for s, e, p in h.hooks if e == "PreToolUse")
+        self.assertEqual(start["tool_name"], "Orca")
+        self.assertNotIn("private", repr(h.hooks))
+
+
+class FocusTests(unittest.TestCase):
+    """A click on a coworker in Dungeons & Agents names its Orca session for the plugin to open."""
+
+    def test_a_coworker_names_its_own_orca_session_and_pane(self):
+        h = Harness()
+        agents = h.sync([agent("working", SID, "claude", worktreeId="repo::C:\\work\\atlas")],
+                        [ps_row(SID, children=[])])
+        target = h.office.focus_target("claude-code", agents[SID].session)
+        self.assertEqual(target, {"orcaSessionId": SID, "paneKey": f"pane-{SID}", "path": "C:\\work\\atlas"})
+
+    def test_a_subagent_or_worker_opens_the_session_it_runs_in(self):
+        h = Harness()
+        agents = h.sync([agent("working", SID, "claude"), agent("working", KID, "codex")],
+                        [ps_row(SID, children=[child(SUB)]), ps_row(KID, parent=SID, children=[])])
+        subagent = agents["child:" + SUB]
+        self.assertEqual(h.office.focus_target("claude-code", subagent.session)["orcaSessionId"], SID)
+        # A worker is drawn under its dispatcher but is an Orca session of its own.
+        worker = agents[KID]
+        self.assertEqual(h.office.focus_target(worker.source, worker.session)["orcaSessionId"], KID)
+
+    def test_an_unknown_or_foreign_session_opens_nothing(self):
+        h = Harness()
+        agents = h.sync([agent("working", SID, "claude")], [ps_row(SID, children=[])])
+        self.assertIsNone(h.office.focus_target("claude-code", "someone-else"))
+        self.assertIsNone(h.office.focus_target("codex", agents[SID].session))
+
+    def test_the_feed_yields_whole_lines_once(self):
+        with tempfile.TemporaryDirectory(prefix="tmp-test-", dir=Path(__file__).parent) as directory:
+            path = Path(directory) / "feed.jsonl"
+            feed = oficina.FocusFeed(path)
+            self.assertEqual(feed.read_new(), [])
+            with path.open("a", encoding="utf-8") as out:
+                out.write('{"source": "codex", "session_id": "a"}\nnot json\n{"source": "cod')
+            self.assertEqual(feed.read_new(), [{"source": "codex", "session_id": "a"}])
+            with path.open("a", encoding="utf-8") as out:
+                out.write('ex", "session_id": "b"}\n')
+            self.assertEqual(feed.read_new(), [{"source": "codex", "session_id": "b"}])
+            self.assertEqual(feed.read_new(), [])
+
+    def test_a_request_replaces_the_last_one_whole(self):
+        with tempfile.TemporaryDirectory(prefix="tmp-test-", dir=Path(__file__).parent) as directory:
+            path = Path(directory) / "request.json"
+            oficina.write_json(path, {"seq": 1})
+            oficina.write_json(path, {"seq": 2, "orcaSessionId": SID})
+            self.assertEqual(json.loads(path.read_text(encoding="utf-8")), {"seq": 2, "orcaSessionId": SID})
+            self.assertEqual(sorted(p.name for p in Path(directory).iterdir()), ["request.json"])
+
+    def test_the_office_tells_pixtuoid_where_clicks_go(self):
+        env = oficina.office_env()
+        self.assertEqual(env["PIXTUOID_FOCUS_FEED"], str(oficina.FOCUS_FEED))
+        self.assertEqual(oficina.FOCUS_FEED.parent, oficina.CANAL)
+
+
+class EventPollTests(unittest.TestCase):
+    """With Orca's events the office reads Orca on a slow timer; without them, as before."""
+
+    def test_events_slow_the_timer_by_how_busy_the_office_is(self):
+        self.assertEqual(oficina.poll_wait(0.5, events=True, busy=True), oficina.EVENT_POLL_BUSY)
+        self.assertEqual(oficina.poll_wait(0.5, events=True), oficina.EVENT_POLL_IDLE)
+        self.assertEqual(oficina.poll_wait(9, events=True, busy=True), 18)
+        self.assertGreater(oficina.EVENT_POLL_IDLE, oficina.EVENT_POLL_BUSY)
+        self.assertGreater(oficina.EVENT_POLL_BUSY, oficina.POLL_SECONDS)
+
+    def test_a_failed_read_retries_as_before(self):
+        self.assertEqual(oficina.poll_wait(0.1, failed=True, events=True), 3.0)
+
+    def test_busy_means_an_agent_is_working(self):
+        h = Harness()
+        h.sync([agent("waiting", SID, "claude")], [ps_row(SID, children=[])])
+        self.assertFalse(h.office.busy())
+        h.sync([agent("working", SID, "claude")], [ps_row(SID, children=[])])
+        self.assertTrue(h.office.busy())
+
+    def test_cli_calls_are_counted(self):
+        before = oficina.CLI_CALLS.total
+        done = oficina.subprocess.CompletedProcess([], 0, b'{"ok": true, "result": {}}', b"")
+        with patch.object(oficina.subprocess, "run", return_value=done):
+            oficina.orca_json("orca.exe", "worktree", "ps")
+        self.assertEqual(oficina.CLI_CALLS.total, before + 1)
 
 
 if __name__ == "__main__":
