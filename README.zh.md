@@ -26,7 +26,7 @@
 | 在 Orca 报告智能体变化时读取 Orca，而不是靠快速定时器 | 是 | 是 |
 | 团队颜色 | 按项目 | 按队伍：一个编排者、它的 worker 及其子智能体 |
 | 表示角色（companion、orchestrator、worker、subagent）的职业 | 否 | 是 |
-| 工具显示为技能；Orca CLI 调用显示为 `Hechizo (Orca)` | 否（显示为工具 `Orca`） | 是 |
+| 工具显示为技能（`Spell (Bash)`、`Scry (Grep)` 等）；Orca CLI 调用显示为 `Sending (Orca)` | 否（显示为工具 `Orca`） | 是 |
 | 点击智能体，或在 `Tab` 树中对它按 `Enter`，在 Orca 中打开它的会话 | 否 | 是 |
 
 ## 系统要求

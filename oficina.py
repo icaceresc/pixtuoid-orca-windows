@@ -159,7 +159,7 @@ def clean_text(text, limit=40):
 
 
 # Shell tools of the agents Orca runs. When one runs the Orca CLI the office shows the tool
-# "Orca" (Dungeons & Agents casts it as a spell); only that verdict leaves the office.
+# "Orca" (Dungeons & Agents shows it as the skill `Sending (Orca)`); only that verdict leaves the office.
 SHELL_TOOLS = {"bash", "powershell", "shell", "exec_command", "local_shell", "run_shell_command",
                "run_command"}
 # `orca` (or orca.exe / orca.cmd, bare or by path) followed by one of its top-level commands

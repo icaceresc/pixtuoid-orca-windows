@@ -26,7 +26,7 @@ Un plugin de Orca para Windows. Abre una ventana flotante en pixel art donde tus
 | Lee Orca cuando Orca informa un cambio de un agente, no con un temporizador rápido | Sí | Sí |
 | Color del equipo | Por proyecto | Por grupo: un orquestador, sus workers y sus subagentes |
 | Clase que muestra el rol (companion, orchestrator, worker, subagent) | No | Sí |
-| Herramientas mostradas como habilidades; una llamada a la CLI de Orca como `Hechizo (Orca)` | No (se muestra como la herramienta `Orca`) | Sí |
+| Herramientas mostradas como habilidades (`Spell (Bash)`, `Scry (Grep)`…); una llamada a la CLI de Orca como `Sending (Orca)` | No (se muestra como la herramienta `Orca`) | Sí |
 | Clic en un agente, o `Enter` sobre él en el árbol de `Tab`, para abrir su sesión en Orca | No | Sí |
 
 ## Requisitos

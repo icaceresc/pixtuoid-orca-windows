@@ -26,7 +26,7 @@ An Orca plugin for Windows. It opens a floating pixel-art window where your loca
 | Reads Orca when Orca reports an agent change, not on a fast timer | Yes | Yes |
 | Team color | By project | By party: an orchestrator, its workers and their subagents |
 | Class that shows the role (companion, orchestrator, worker, subagent) | No | Yes |
-| Tools shown as skills; an Orca CLI call as `Hechizo (Orca)` | No (shown as the tool `Orca`) | Yes |
+| Tools shown as skills (`Spell (Bash)`, `Scry (Grep)`…); an Orca CLI call as `Sending (Orca)` | No (shown as the tool `Orca`) | Yes |
 | Click an agent, or `Enter` on it in the `Tab` tree, to open its session in Orca | No | Yes |
 
 ## Requirements

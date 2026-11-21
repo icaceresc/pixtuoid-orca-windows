@@ -26,7 +26,7 @@ Ein Orca-Plugin für Windows. Es öffnet ein schwebendes Pixel-Art-Fenster, in d
 | Liest Orca, wenn Orca eine Änderung eines Agenten meldet, nicht in schnellem Takt | Ja | Ja |
 | Teamfarbe | Nach Projekt | Nach Gruppe: ein Orchestrator, seine Worker und ihre Subagenten |
 | Klasse, die die Rolle zeigt (companion, orchestrator, worker, subagent) | Nein | Ja |
-| Werkzeuge als Fähigkeiten; ein Aufruf der Orca-CLI als `Hechizo (Orca)` | Nein (als Werkzeug `Orca` angezeigt) | Ja |
+| Werkzeuge als Fähigkeiten (`Spell (Bash)`, `Scry (Grep)`…); ein Aufruf der Orca-CLI als `Sending (Orca)` | Nein (als Werkzeug `Orca` angezeigt) | Ja |
 | Klick auf einen Agenten, oder `Enter` auf ihm im `Tab`-Baum, öffnet seine Sitzung in Orca | Nein | Ja |
 
 ## Voraussetzungen

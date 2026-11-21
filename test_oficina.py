@@ -779,7 +779,7 @@ class ReleaseCheckTests(unittest.TestCase):
 
 
 class OrcaToolTests(unittest.TestCase):
-    """An agent running the Orca CLI shows the tool "Orca" (Dungeons & Agents casts it as a spell)."""
+    """An agent running the Orca CLI shows the tool "Orca" (Dungeons & Agents: `Sending (Orca)`)."""
 
     def test_a_shell_call_of_the_orca_cli_is_the_orca_tool(self):
         for command in ("orca worktree ps --json", "cd C:/x && orca agent list",
