@@ -6,13 +6,14 @@ status: active
 commits: authorized
 coordination: Punky coordinates this mission's Orchestrator and reports to the owner (Spanish).
 delegation: the Orchestrator dispatches Orca workers and chooses their models and effort.
-authorized: install Rust toolchain and MSVC Build Tools; fork pixtuoid/pixtuoid into icaceresc; branches, commits, pushes and PRs on icaceresc repos only.
-not authorized: issues or PRs on pixtuoid/pixtuoid upstream; merge; release; repo rename; touching the running install at C:\Dev\Personalization\pixtuoid-orca-windows.
-gates: owner approves the campaign vertical slice before the full rework; owner approves the full rework and the integration ideas before the plugin.
+authorized: install Rust toolchain and MSVC Build Tools; fork pixtuoid/pixtuoid into icaceresc; branches, commits, pushes and PRs on icaceresc repos only; rename the fork to icaceresc/dungeons-and-agents (done 2026-11-21); DRAFT releases on the owner's repos; build and test the plugin and the mod; install the candidate in a test copy and open it with real agents.
+not authorized: issues or PRs on pixtuoid/pixtuoid upstream; merging PRs; publishing a release (makes it public); publishing the plugin to the Orca catalog; touching C:\Dev\Personalization\pixtuoid-orca-windows (until the final GO); English skill names without approval (propose with cost).
+gates: final GO from the owner (through Punky) before merging PRs, publishing the fork release and publishing the plugin; then clean up spare workspaces and branches so the owner keeps a single `main` per repo.
+names: the mod is "Dungeons & Agents" (owner's final decision, aware of the D&D resemblance): README credits Pixtuoid by Ivan Wang (MIT, copyright notice kept) and states it is not affiliated with Wizards of the Coast, Larian or Pixtuoid; no D&D or BG3 logos or fonts. The plugin keeps icaceresc/pixtuoid-orca-windows and the name "Pixtuoid para Orca".
 originality: original designs only; nothing from Dark Souls, Berserk, D&D / Baldur's Gate 3 or Tolkien in names, characters, logos, art or UI (generic monsters such as orc, goblin, skeleton are fine).
 
 ## Layout
-- Fork: https://github.com/icaceresc/pixtuoid, clone C:\Dev\Personalization\pixtuoid (remote `upstream` = pixtuoid/pixtuoid, `gh` default repo = the fork), Orca repo id b86f3755-0b74-4dde-93e0-6f2d7bcbf74b.
+- Fork: https://github.com/icaceresc/dungeons-and-agents (renamed from icaceresc/pixtuoid on 2026-11-21; GitHub redirects the old name), clone C:\Dev\Personalization\pixtuoid (remote `upstream` = pixtuoid/pixtuoid, `gh` default repo = the fork), Orca repo id b86f3755-0b74-4dde-93e0-6f2d7bcbf74b.
 - Base branch `dark-fantasy` in the fork = upstream tag v0.23.0 (a89eebac), the version this adapter pins. Fantasy work branches from it and PRs target it.
 - Release build: `cargo build --release --locked -p pixtuoid --bin pixtuoid -p pixtuoid-hook --bin pixtuoid-hook` (release-plz.yml), toolchain 1.99.1 (rust-toolchain.toml).
 
@@ -43,5 +44,10 @@ Agents are adventurers of four original classes (mage, knight, ranger, berserker
 - [x] Rework: rework/pets f520ab9e: wolf/owlbear in code with cat/dog config aliases; PetKind::Raven; OpenClaw lobster restored; default order owlbear, raven, wolf
 - [x] Rework: rework/integration 014a6eb5 (gen-art ok 457 sprites, core and scene 0 failures, clippy clean, pixtuoid 44 known Windows failures); draft fork PR https://github.com/icaceresc/pixtuoid/pull/3 (supersedes #2 and #1 once approved); installed with `instalar.py --local` under adapter feat/roles; the real office showed companion sessions as mages resting in camp, the orchestrator as a knight and a live worker as a berserker fighting at active lairs, empty lairs elsewhere, the raven pet and a `Hechizo (Bash)` footer; screenshots in this workspace's scratch/shots/rework-*.png (untracked); office stopped
 - [x] Rework: report sent to Punky with the plugin integration ideas
-- [ ] Owner's approval of the rework and choice of plugin integration ideas (gate: the plugin is built only after approval)
-- [ ] Campaign 5: Orca plugin with the campaign build; propose the integration ideas first (after approval)
+- [x] Owner approved the rework (2026-11-21) and chose the plugin v1 scope: office/dungeon selector, install and update from Orca, click on an adventurer opens its Orca session, a notice when an agent needs the user, palette commands, Orca events instead of polling; later: side panel and named quests; engine-only features (classes, skills, click) may be dungeon-only, documented; distribution by a release of the renamed fork (Windows zip + SHA-256); Orca CLI calls show as "Hechizo (Orca)"
+- [x] Fork renamed to icaceresc/dungeons-and-agents; origin and gh default updated in the clone (worktrees share it)
+- [ ] Mod: README (Dungeons & Agents, Pixtuoid credit, MIT notice, non-affiliation line), "Hechizo (Orca)", click events for the plugin, release build zip with SHA-256, DRAFT release on the fork
+- [ ] Plugin: selector (office = pinned upstream + SHA-256, dungeon = fork release + SHA-256), install/update, click opens the Orca session, needs-you notice, palette commands, Orca events; README; PR with checks green
+- [ ] Verify the candidate in a test copy with real agents: both modes and the click; screenshots
+- [ ] Final gate report to Punky (ready PRs, draft release + SHA, screenshots, exact publish steps, English skill-name proposal with cost); stop for the owner's GO
+- [ ] After the GO: merge, publish the release and the plugin, update the owner's install, clean spare workspaces and branches (single main per repo)
