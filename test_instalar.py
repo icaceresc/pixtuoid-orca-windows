@@ -276,13 +276,13 @@ class ModeTests(unittest.TestCase):
         self.assertIn("invalid choice", parse("--modo", "tavern"))
 
     def test_the_dungeon_pin_is_the_release_zip_and_its_digest(self):
-        # Verified on 2026-11-21 for the English-skills build: `gh release view v1.0.0
+        # Verified on 2026-11-23 for the team-banners build: `gh release view v1.0.1
         # --repo icaceresc/dungeons-and-agents` lists this digest, and sha256sum of the
         # downloaded zip prints it.
         self.assertEqual(instalar.pin_for("dungeon"), (
-            "https://github.com/icaceresc/dungeons-and-agents/releases/download/v1.0.0/"
-            "dungeons-and-agents-v1.0.0-x86_64-pc-windows-msvc.zip",
-            "e43457ccb131344ecdc7a6ad4abb6a9a4c54f2507d5ba3b2aa08f6d902ff1283"))
+            "https://github.com/icaceresc/dungeons-and-agents/releases/download/v1.0.1/"
+            "dungeons-and-agents-v1.0.1-x86_64-pc-windows-msvc.zip",
+            "be69b42c7aa399b5ffecd5f41f185a941324d4a852dd9176bf432a86cc17596f"))
         self.assertEqual(instalar.pin_for("oficina"), (instalar.RELEASE, instalar.SHA256))
 
     def test_dungeon_release_is_downloaded_verified_and_remembered(self):

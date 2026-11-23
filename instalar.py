@@ -26,10 +26,10 @@ VERSION = "0.23.0"
 ARCHIVE = f"pixtuoid-v{VERSION}-x86_64-pc-windows-msvc.zip"
 SHA256 = "e52205aba4061112f94f40529d920e0346c98c0f4123edeceebee12e80303dad"
 RELEASE = f"https://github.com/pixtuoid/pixtuoid/releases/download/v{VERSION}/{ARCHIVE}"
-DUNGEON_VERSION = "1.0.0"
+DUNGEON_VERSION = "1.0.1"
 DUNGEON_RELEASE = (f"https://github.com/icaceresc/dungeons-and-agents/releases/download/v{DUNGEON_VERSION}/"
                    f"dungeons-and-agents-v{DUNGEON_VERSION}-x86_64-pc-windows-msvc.zip")
-DUNGEON_SHA256 = "e43457ccb131344ecdc7a6ad4abb6a9a4c54f2507d5ba3b2aa08f6d902ff1283"
+DUNGEON_SHA256 = "be69b42c7aa399b5ffecd5f41f185a941324d4a852dd9176bf432a86cc17596f"
 MODES = ("oficina", "dungeon")
 CONFIG = PROFILE / "config" / "pixtuoid" / "config.toml"
 # Marks a data folder this installer made outside a clone, so the plugin may remove it.
