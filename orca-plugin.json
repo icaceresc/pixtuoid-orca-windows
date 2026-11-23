@@ -3,7 +3,7 @@
   "manifestVersion": 2,
   "id": "pixtuoid-office",
   "name": "Pixtuoid para Orca",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "description": "Opens a floating pixel-art office on Windows where your Orca agents, their workers and subagents appear as coworkers: the official Pixtuoid office, or Dungeons & Agents, where clicking an adventurer opens its session in Orca.",
   "author": {
     "name": "icaceresc",
