@@ -1,3 +1,8 @@
+status: completed
+commits: authorized
+
+Nota: estudio de referencia de la misión `pixtuoid-dark-fantasy.md`; no es un plan de ejecución.
+
 # Fantasy campaign: feasibility map and engine design
 
 Base studied: `origin/fantasy/prototype` @ `931f106e` (worktree branch `icaceresc/campaign-feasibility`, read-only; no commits).
